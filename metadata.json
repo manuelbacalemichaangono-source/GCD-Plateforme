@@ -1,0 +1,6 @@
+{
+  "name": "GCD Platforme",
+  "description": "Plateforme de gestion du cycle doctoral (CEDoc) : recherche et comparaison des sujets, candidature sans redondance documentaire, contrôle de conformité et complétude ensembliste, délibérations et réinscriptions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
