@@ -1,29 +1,38 @@
-# Security Specification — GCD Platform (CEDoc EST Fès / USMBA)
+# Security Specification — GCD Platforme (CEDoc EST Fès)
 
-## 1. Data Invariants
+## 1. Architectural & User Constraints
+- **Explicit User Requirement on Email Verification**: Per Section 2 of user specifications (*"NO exijas email verificado"*), candidates and staff sign in with Email + Password (and reset password links) without blocking on `email_verified == true`. Identity is bound via `request.auth.uid` for candidates/doctorants and via Firebase Auth's unique normalized lowercase email (`request.auth.token.email.lower()`) matched against `/personnel/{emailLower}` for staff.
+- **Seed Administrator**: `aladinmonroe0@gmail.com` may bootstrap `/personnel/aladinmonroe0@gmail.com` once (`!exists(...)`) with role `['Directeur du CEDoc']`. All subsequent staff accounts are created exclusively by `Directeur du CEDoc`.
 
-1. **Default-Deny Catch-All**: Unmatched paths in Firestore are unconditionally denied (`allow read, write: if false;`).
-2. **Email Verification & Anti-Spoofing**: Every authenticated write and every email-based role lookup requires `request.auth != null && request.auth.token.email_verified == true`.
-3. **Zero Self-Assigned Privileged Roles**: Self-registration on `/users/{userId}` can ONLY assign `role == 'candidat'`. Roles `doctorant`, `scolarite`, `jury`, `directeur_these`, `directeur_labo`, and `directeur_cedoc` require either an existing verified `/staff_registry/{email}` document matching that exact role or `isAdmin()`.
-4. **PII Split-Collection Isolation**: Emails and student CNE identifiers live exclusively in `/user_private/{userId}`, readable ONLY by `isOwner(userId) || isAdmin()`.
-5. **Candidate Data Isolation**: A `candidat` can ONLY read/create/update their own `/candidatures/{candidatureId}` (`candidateUid == request.auth.uid`) and `/candidatures/{candidatureId}/pieces/{pieceId}`.
-6. **AI Pre-Check Isolation (System/Receptor-Only)**: `/candidatures/{candidatureId}/ai_controls/{pieceId}` is strictly inaccessible (`read` and `write` denied) to candidates, jury, thesis directors, and lab directors; ONLY `scolarite` and `isAdmin()` may read or write AI pre-checks.
-7. **Candidate Cannot Validate Pieces**: Candidates may ONLY create or update a piece with `status == 'Reçue'` and `motif == ''` (never `Conforme` or `Non conforme`), and ONLY when the parent candidature is in `['Compte créé', 'En dépôt', 'Incomplet']`.
-8. **Double Gate for Official Publication**: `admisPublished` on `/candidatures/{candidatureId}` and creation in `/admis_publies/{candidatureId}` require `scolarite` AND `cedocValidated == true` (set previously by `directeur_cedoc`).
-9. **Terminal State Locking**: Once a candidature reaches `'Inscrit'` (or `'Non présélectionné'`), further non-admin mutations are blocked (except `'Recours'` motif submission by the candidate when `'Non admis'`).
-10. **Zero `get()` in `allow list`**: Every `allow list` rule evaluates `resource.data` directly without `get()` or `exists()` calls to prevent O(n) cost amplification.
+## 2. Data Invariants
+1. **Default Deny**: Any path not explicitly matched is unconditionally denied (`allow read, write: if false`).
+2. **Personnel Isolation**: Only `Directeur du CEDoc` can list, create, update, or delete `/personnel/{emailId}` records (except the one-time bootstrap of `aladinmonroe0@gmail.com`). Regular authenticated users can `get` only their own `/personnel/{emailLower}` document to check if they hold a staff role.
+3. **Public Subject Filtering**: Unauthenticated visitors and candidates may only read `/sujets` where `resource.data.statut == 'Publié'`. Unpublished (`En attente`, `Refusé`) subjects are restricted to `Directeur de thèse` (own subjects), `Directeur du laboratoire` (own laboratory), and `Directeur du CEDoc`.
+4. **Candidature Ownership & State Integrity**:
+   - A candidate can only read/write `/candidatures/{uid}` where `uid == request.auth.uid`.
+   - Candidates can create a candidature only in `'Compte créé'` or `'En dépôt'` and transition it only up to `'Envoyée'`, or submit a `recours` when `'Non admis'`. Candidates can NEVER set administrative statuses (`Complet`, `Présélectionné`, `Convoqué`, `Admis`, `Inscrit`).
+   - Only `Secrétariat CEDoc` can mark dossiers `Complet`, `Incomplet`, `Non admis` (expired deadline), or `Inscrit`.
+   - Only `Jury` can transition dossiers through `Présélectionné`, `Non présélectionné`, `Convoqué`, `Admis`, `Non admis`.
+5. **Document & AI Pre-check Confidentiality**:
+   - Candidates can upload/replace `/candidatures/{uid}/pieces/{slotId}` only with `statut == 'Reçue'`, `sizeBytes <= 5242880`, and only while their parent candidature is not locked (`Compte créé`, `En dépôt`, `Envoyée`, or `Incomplet`).
+   - `/candidatures/{uid}/precontrole/{slotId}` is strictly isolated to `Secrétariat CEDoc` (`allow get, create, update: if isSecretariat()`). Candidates have **zero** read or write access to AI pre-check evaluations.
+6. **Official Admitted Publication Gate**:
+   - `Directeur du CEDoc` sets `valideeParCedoc = true` on `/publication_admis/officielle`.
+   - `Secrétariat CEDoc` can set `publieeParSecretariat = true` ONLY when `existing().valideeParCedoc == true`.
+   - Candidates/public can `get` `/publication_admis/officielle` ONLY when `resource.data.publieeParSecretariat == true`.
+7. **Zero `get()`/`exists()` Inside Subcollection `list`**:
+   - Subcollection reads use `resource.data.ownerId == request.auth.uid` or single-document `get` on known fixed slot IDs (`identite`, `diplome`, `releves`, `projet`, `cv`), avoiding O(N) lookup explosions in `list`.
 
-## 2. The "Dirty Dozen" Payloads (All Must Return `PERMISSION_DENIED`)
-
-1. **Privilege Escalation on Registration**: Authenticated user writes `/users/{uid}` with `{ role: "scolarite" }` without a matching `/staff_registry` entry.
-2. **Unverified Email Spoofing**: Attacker signs up with `manuelbacale.michaangono@usmba.ac.ma` (`email_verified: false`) and attempts admin read/write.
-3. **Cross-Candidate Dossier Read**: Candidate `uid_A` attempts `get` or `list` on `/candidatures/cand_B` owned by `uid_B`.
-4. **Candidate Reads AI Pre-Control**: Candidate `uid_A` attempts `get` on `/candidatures/cand_A/ai_controls/CIN`.
-5. **Candidate Self-Validates Document**: Candidate `uid_A` updates `/candidatures/cand_A/pieces/CIN` with `{ status: "Conforme" }`.
-6. **Ghost Field Shadow Update**: Candidate updates `/candidatures/cand_A` adding `{ isVerified: true }`.
-7. **State Shortcutting by Candidate**: Candidate updates `/candidatures/cand_A` from `'En dépôt'` directly to `'Admis'`.
-8. **Jury Evaluates Incomplete Dossier**: Jury member attempts to set `'Présélectionné'` on a candidature whose current status is `'En dépôt'`.
-9. **Premature Publication Without CEDoc Director Validation**: `scolarite` attempts to create `/admis_publies/cand_A` when `/candidatures/cand_A.cedocValidated == false`.
-10. **PII Leak Across Users**: Authenticated staff or candidate `uid_X` attempts `get` on `/user_private/uid_Y`.
-11. **ID / Value Poisoning (1MB Payload)**: Attacker sends a 5,000-character string into `title` or junk characters in `{sujetId}`.
-12. **Client-Forged Timestamp**: Client writes `createdAt` or `updatedAt` with a past/future timestamp not equal to `request.time`.
+## 3. The "Dirty Dozen" Adversarial Payloads
+1. **Self-Promotion to CEDoc Director**: Candidate writes `/personnel/hacker@gmail.com` with `roles: ['Directeur du CEDoc']` -> `PERMISSION_DENIED`.
+2. **PII Scraping on Candidatures**: Candidate A lists `/candidatures` or gets `/candidatures/candidateB` -> `PERMISSION_DENIED`.
+3. **Status Shortcutting**: Candidate updates own `/candidatures/{uid}` with `statut: 'Admis'` -> `PERMISSION_DENIED`.
+4. **Shadow Field Injection**: Candidate creates `/candidatures/{uid}` with extra field `isAdmin: true` -> `PERMISSION_DENIED` (`hasOnly` check).
+5. **Piece Self-Validation**: Candidate writes `/candidatures/{uid}/pieces/cv` with `statut: 'Conforme'` -> `PERMISSION_DENIED`.
+6. **Oversized File Metadata**: Candidate writes piece with `sizeBytes: 99999999` (> 5 MB) -> `PERMISSION_DENIED`.
+7. **Locked Dossier Tampering**: Candidate replaces a piece after parent candidature reached `'Complet'` -> `PERMISSION_DENIED` (Master Gate parent status check).
+8. **AI Pre-Check Snooping**: Candidate reads `/candidatures/{uid}/precontrole/cv` -> `PERMISSION_DENIED`.
+9. **Unvalidated Subject Publication**: `Directeur de thèse` creates `/sujets/s1` directly with `statut: 'Publié'` -> `PERMISSION_DENIED` (must be `'En attente'`).
+10. **Cross-Lab Validation**: `Directeur du laboratoire` of `LISA` validates a subject belonging to `LGIM` -> `PERMISSION_DENIED`.
+11. **Premature Admis Publication**: `Secrétariat CEDoc` sets `publieeParSecretariat: true` when `valideeParCedoc == false` -> `PERMISSION_DENIED`.
+12. **Client Timestamp Forgery**: Candidate writes `createdAt` with a past/future timestamp `!= request.time` -> `PERMISSION_DENIED`.

@@ -1,379 +1,247 @@
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback,
-} from "react";
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
+  User,
+  onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  sendEmailVerification,
-  signInWithPopup,
+  sendPasswordResetEmail,
   signOut,
-} from "firebase/auth";
+  updateProfile,
+} from 'firebase/auth';
+import { doc, getDoc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import {
   auth,
-  googleProvider,
-  syncFirebaseUserProfile,
-} from "../firebase";
-import { AuthenticatedUser } from "../types/cedoc";
+  db,
+  ensureInitialCatalogSeeded,
+  handleFirestoreError,
+  OperationType,
+} from '../firebase';
+import { SEED_ADMIN_EMAIL } from '../config/constants';
+import { CandidatureRecord, PersonnelRecord, PersonnelRole } from '../types/cedoc';
 
-const TOKEN_STORAGE_KEY = "gcd_session_token";
-
-export interface PendingVerificationState {
-  email: string;
-  mode: "firebase" | "server";
-  verificationToken?: string;
-}
-
-interface RegisterCandidatPayload {
-  fullName: string;
-  email: string;
-  password: string;
-  subjectId: string;
-  cne?: string;
-  originInstitution?: string;
-}
+export type AccountKind = 'visitor' | 'candidat' | 'doctorant' | 'personnel';
 
 interface AuthContextValue {
-  user: AuthenticatedUser | null;
-  token: string | null;
-  loading: boolean;
-  pendingVerification: PendingVerificationState | null;
-  clearPendingVerification: () => void;
-  login: (identifier: string, password: string) => Promise<AuthenticatedUser>;
-  loginWithGoogle: (opts?: {
-    subjectId?: string;
-    cne?: string;
-    originInstitution?: string;
-  }) => Promise<AuthenticatedUser>;
-  registerCandidat: (
-    payload: RegisterCandidatPayload
-  ) => Promise<{ verified: boolean; user?: AuthenticatedUser }>;
-  confirmEmailVerification: () => Promise<AuthenticatedUser>;
-  resendVerificationEmail: () => Promise<void>;
+  user: User | null;
+  authReady: boolean;
+  accountKind: AccountKind;
+  personnel: PersonnelRecord | null;
+  activePersonnelRole: PersonnelRole | null;
+  setActivePersonnelRole: (role: PersonnelRole | null) => void;
+  candidature: CandidatureRecord | null;
+  loginWithEmail: (email: string, password: string) => Promise<void>;
+  registerCandidat: (nom: string, email: string, password: string) => Promise<User>;
+  resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
-  apiFetch: <T = any>(url: string, init?: RequestInit) => Promise<T>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
-  const [token, setToken] = useState<string | null>(() =>
-    localStorage.getItem(TOKEN_STORAGE_KEY)
-  );
-  const [user, setUser] = useState<AuthenticatedUser | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [pendingVerification, setPendingVerification] =
-    useState<PendingVerificationState | null>(null);
-
-  const persistSession = (newToken: string, newUser: AuthenticatedUser) => {
-    localStorage.setItem(TOKEN_STORAGE_KEY, newToken);
-    setToken(newToken);
-    setUser(newUser);
-    setPendingVerification(null);
-  };
-
-  const clearSession = () => {
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
-    setToken(null);
-    setUser(null);
-  };
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [personnel, setPersonnel] = useState<PersonnelRecord | null>(null);
+  const [activePersonnelRole, setActivePersonnelRole] = useState<PersonnelRole | null>(null);
+  const [candidature, setCandidature] = useState<CandidatureRecord | null>(null);
 
   useEffect(() => {
-    let active = true;
-    const restore = async () => {
-      const saved = localStorage.getItem(TOKEN_STORAGE_KEY);
-      if (!saved) {
-        if (active) setLoading(false);
+    let unsubCandidature: (() => void) | null = null;
+    let unsubPersonnel: (() => void) | null = null;
+
+    const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (unsubCandidature) {
+        unsubCandidature();
+        unsubCandidature = null;
+      }
+      if (unsubPersonnel) {
+        unsubPersonnel();
+        unsubPersonnel = null;
+      }
+
+      setUser(firebaseUser);
+
+      if (!firebaseUser) {
+        setPersonnel(null);
+        setActivePersonnelRole(null);
+        setCandidature(null);
+        setAuthReady(true);
         return;
       }
-      try {
-        const resp = await fetch("/api/auth/me", {
-          headers: { Authorization: `Bearer ${saved}` },
-        });
-        if (!resp.ok) {
-          clearSession();
-        } else {
-          const data = await resp.json();
-          if (active) setUser(data.user);
+
+      setAuthReady(false);
+      const emailLower = (firebaseUser.email ?? '').trim().toLowerCase();
+
+      // Seed bootstrap rule for Aladinmonroe0@gmail.com
+      if (emailLower === SEED_ADMIN_EMAIL) {
+        try {
+          const seedRef = doc(db, 'personnel', SEED_ADMIN_EMAIL);
+          const seedSnap = await getDoc(seedRef);
+          if (!seedSnap.exists()) {
+            await setDoc(seedRef, {
+              email: SEED_ADMIN_EMAIL,
+              nom: firebaseUser.displayName?.trim() || 'Directeur CEDoc',
+              roles: ['Directeur du CEDoc'],
+              laboratoire: '',
+              updatedAt: serverTimestamp(),
+            });
+          }
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `personnel/${SEED_ADMIN_EMAIL}`);
         }
-      } catch {
-        clearSession();
-      } finally {
-        if (active) setLoading(false);
       }
-    };
-    restore();
+
+      // One-time catalog initialization into Firestore if empty
+      await ensureInitialCatalogSeeded();
+
+      // Check personnel record first
+      let initialPersonnel: PersonnelRecord | null = null;
+      if (emailLower) {
+        try {
+          const pRef = doc(db, 'personnel', emailLower);
+          const pSnap = await getDoc(pRef);
+          if (pSnap.exists()) {
+            const d = pSnap.data();
+            initialPersonnel = {
+              email: String(d.email ?? emailLower),
+              nom: String(d.nom ?? ''),
+              roles: Array.isArray(d.roles) ? (d.roles as PersonnelRole[]) : [],
+              laboratoire: String(d.laboratoire ?? ''),
+            };
+          }
+        } catch (err) {
+          handleFirestoreError(err, OperationType.GET, `personnel/${emailLower}`);
+        }
+      }
+
+      if (initialPersonnel && initialPersonnel.roles.length > 0) {
+        setPersonnel(initialPersonnel);
+        setActivePersonnelRole(
+          initialPersonnel.roles.length === 1 ? initialPersonnel.roles[0] : null
+        );
+        setCandidature(null);
+
+        const pRef = doc(db, 'personnel', emailLower);
+        unsubPersonnel = onSnapshot(
+          pRef,
+          (snap) => {
+            if (!snap.exists()) {
+              setPersonnel(null);
+              setActivePersonnelRole(null);
+              return;
+            }
+            const d = snap.data();
+            const roles = Array.isArray(d.roles) ? (d.roles as PersonnelRole[]) : [];
+            setPersonnel({
+              email: String(d.email ?? emailLower),
+              nom: String(d.nom ?? ''),
+              roles,
+              laboratoire: String(d.laboratoire ?? ''),
+            });
+            setActivePersonnelRole((prev) =>
+              prev && roles.includes(prev) ? prev : roles.length === 1 ? roles[0] : null
+            );
+          },
+          (err) => {
+            handleFirestoreError(err, OperationType.GET, `personnel/${emailLower}`);
+          }
+        );
+
+        setAuthReady(true);
+        return;
+      }
+
+      // Otherwise treat as Candidat / Doctorant and listen to own candidature
+      setPersonnel(null);
+      setActivePersonnelRole(null);
+
+      const candRef = doc(db, 'candidatures', firebaseUser.uid);
+      unsubCandidature = onSnapshot(
+        candRef,
+        (snap) => {
+          if (!snap.exists()) {
+            setCandidature(null);
+          } else {
+            const d = snap.data();
+            setCandidature({
+              candidatId: String(d.candidatId ?? firebaseUser.uid),
+              nom: String(d.nom ?? ''),
+              email: String(d.email ?? emailLower),
+              sujetId: String(d.sujetId ?? ''),
+              sujetIntitule: String(d.sujetIntitule ?? ''),
+              sujetDescription: String(d.sujetDescription ?? ''),
+              sujetDiscipline: String(d.sujetDiscipline ?? ''),
+              directeur: String(d.directeur ?? ''),
+              directeurEmail: String(d.directeurEmail ?? ''),
+              laboratoire: String(d.laboratoire ?? ''),
+              universiteOrigine: (d.universiteOrigine as '' | 'EST Fès' | 'Autre') ?? '',
+              cne: String(d.cne ?? ''),
+              recuperationAuto: Boolean(d.recuperationAuto),
+              statut: d.statut,
+              nouveauDelai: String(d.nouveauDelai ?? ''),
+              convocationDate: String(d.convocationDate ?? ''),
+              convocationLieu: String(d.convocationLieu ?? ''),
+              recoursDepose: Boolean(d.recoursDepose),
+              recoursMotif: String(d.recoursMotif ?? ''),
+            });
+          }
+          setAuthReady(true);
+        },
+        (err) => {
+          handleFirestoreError(err, OperationType.GET, `candidatures/${firebaseUser.uid}`);
+        }
+      );
+    });
+
     return () => {
-      active = false;
+      unsubAuth();
+      if (unsubCandidature) unsubCandidature();
+      if (unsubPersonnel) unsubPersonnel();
     };
   }, []);
 
-  const apiFetch = useCallback(
-    async <T = any,>(url: string, init?: RequestInit): Promise<T> => {
-      const headers = new Headers(init?.headers || {});
-      if (!headers.has("Content-Type") && init?.body) {
-        headers.set("Content-Type", "application/json");
-      }
-      const activeToken = token || localStorage.getItem(TOKEN_STORAGE_KEY);
-      if (activeToken) {
-        headers.set("Authorization", `Bearer ${activeToken}`);
-      }
-      const resp = await fetch(url, { ...init, headers });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) {
-        if (resp.status === 401) {
-          clearSession();
-        }
-        throw new Error(data?.error || "Une erreur est survenue.");
-      }
-      return data as T;
-    },
-    [token]
-  );
+  const accountKind: AccountKind = !user
+    ? 'visitor'
+    : personnel && personnel.roles.length > 0
+    ? 'personnel'
+    : candidature?.statut === 'Inscrit'
+    ? 'doctorant'
+    : 'candidat';
 
-  const login = async (
-    identifier: string,
-    password: string
-  ): Promise<AuthenticatedUser> => {
-    const trimmed = identifier.trim();
-
-    // Tentative Firebase Auth si l'identifiant est un e-mail et le fournisseur est actif
-    if (trimmed.includes("@")) {
-      try {
-        const cred = await signInWithEmailAndPassword(auth, trimmed, password);
-        if (!cred.user.emailVerified) {
-          setPendingVerification({
-            email: trimmed.toLowerCase(),
-            mode: "firebase",
-          });
-          throw new Error(
-            "Veuillez vérifier votre adresse e-mail avant de vous connecter."
-          );
-        }
-        const idToken = await cred.user.getIdToken();
-        const fbResp = await fetch("/api/auth/firebase-session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken }),
-        });
-        if (fbResp.ok) {
-          const fbData = await fbResp.json();
-          persistSession(fbData.token, fbData.user);
-          await syncFirebaseUserProfile({
-            uid: cred.user.uid,
-            displayName: fbData.user.fullName,
-            email: fbData.user.email,
-            role: fbData.user.role,
-            laboratory: fbData.user.laboratory,
-          }).catch(() => {});
-          return fbData.user;
-        }
-      } catch (err: any) {
-        if (
-          err?.message ===
-          "Veuillez vérifier votre adresse e-mail avant de vous connecter."
-        ) {
-          throw err;
-        }
-        // Si le compte institutionnel pré-créé est géré côté serveur ou si Email/Password n'est pas encore activé dans la console Firebase, on vérifie via l'annuaire serveur sécurisé
-      }
-    }
-
-    const resp = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ identifier: trimmed, password }),
-    });
-    const data = await resp.json();
-
-    if (!resp.ok) {
-      if (data?.code === "EMAIL_NOT_VERIFIED") {
-        setPendingVerification({
-          email: data.email,
-          mode: "server",
-          verificationToken: data.verificationToken,
-        });
-      }
-      throw new Error(data?.error || "Identifiants incorrects.");
-    }
-
-    persistSession(data.token, data.user);
-    return data.user;
+  const loginWithEmail = async (email: string, password: string) => {
+    await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
   };
 
-  const loginWithGoogle = async (opts?: {
-    subjectId?: string;
-    cne?: string;
-    originInstitution?: string;
-  }): Promise<AuthenticatedUser> => {
-    const cred = await signInWithPopup(auth, googleProvider);
-    const idToken = await cred.user.getIdToken(true);
-
-    const resp = await fetch("/api/auth/firebase-session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        idToken,
-        subjectId: opts?.subjectId || "",
-        cne: opts?.cne || "",
-        originInstitution: opts?.originInstitution || "",
-      }),
-    });
-    const data = await resp.json();
-    if (!resp.ok) {
-      await signOut(auth).catch(() => {});
-      throw new Error(data?.error || "Impossible d'ouvrir la session.");
+  const registerCandidat = async (nom: string, email: string, password: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+    if (nom.trim()) {
+      await updateProfile(cred.user, { displayName: nom.trim().slice(0, 120) });
     }
-
-    persistSession(data.token, data.user);
-    await syncFirebaseUserProfile({
-      uid: cred.user.uid,
-      displayName: data.user.fullName,
-      email: data.user.email,
-      role: data.user.role,
-      laboratory: data.user.laboratory,
-      cne: opts?.cne,
-    }).catch(() => {});
-
-    return data.user;
+    return cred.user;
   };
 
-  const registerCandidat = async (
-    payload: RegisterCandidatPayload
-  ): Promise<{ verified: boolean; user?: AuthenticatedUser }> => {
-    let usedFirebaseEmailAuth = false;
-
-    try {
-      const cred = await createUserWithEmailAndPassword(
-        auth,
-        payload.email.trim(),
-        payload.password
-      );
-      await sendEmailVerification(cred.user);
-      usedFirebaseEmailAuth = true;
-    } catch (err: any) {
-      const code = String(err?.code || "");
-      if (code === "auth/email-already-in-use") {
-        throw new Error("Un compte existe déjà avec cette adresse e-mail.");
-      }
-      if (code === "auth/weak-password") {
-        throw new Error("Le mot de passe doit contenir au moins 6 caractères.");
-      }
-      // Si auth/operation-not-allowed (fournisseur non activé dans la console Firebase), l'inscription passe par le serveur avec confirmation d'e-mail
-    }
-
-    const resp = await fetch("/api/auth/register-candidat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...payload,
-        firebaseVerified: false,
-      }),
-    });
-    const data = await resp.json();
-    if (!resp.ok) {
-      throw new Error(data?.error || "Erreur lors de la création du compte.");
-    }
-
-    setPendingVerification({
-      email: payload.email.trim().toLowerCase(),
-      mode: usedFirebaseEmailAuth ? "firebase" : "server",
-      verificationToken: data.verificationToken,
-    });
-
-    return { verified: false };
-  };
-
-  const confirmEmailVerification = async (): Promise<AuthenticatedUser> => {
-    if (!pendingVerification) {
-      throw new Error("Aucune vérification en attente.");
-    }
-
-    if (pendingVerification.mode === "firebase" && auth.currentUser) {
-      await auth.currentUser.reload();
-      if (!auth.currentUser.emailVerified) {
-        throw new Error(
-          "Adresse e-mail non encore confirmée. Cliquez sur le lien reçu par e-mail puis réessayez."
-        );
-      }
-      const resp = await fetch("/api/auth/verify-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: pendingVerification.email,
-          firebaseConfirmed: true,
-        }),
-      });
-      const data = await resp.json();
-      if (!resp.ok) {
-        throw new Error(data?.error || "Vérification impossible.");
-      }
-      persistSession(data.token, data.user);
-      await syncFirebaseUserProfile({
-        uid: auth.currentUser.uid,
-        displayName: data.user.fullName,
-        email: data.user.email,
-        role: data.user.role,
-        laboratory: data.user.laboratory,
-      }).catch(() => {});
-      return data.user;
-    }
-
-    const resp = await fetch("/api/auth/verify-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: pendingVerification.email,
-        verificationToken: pendingVerification.verificationToken,
-      }),
-    });
-    const data = await resp.json();
-    if (!resp.ok) {
-      throw new Error(data?.error || "Vérification impossible.");
-    }
-    persistSession(data.token, data.user);
-    return data.user;
-  };
-
-  const resendVerificationEmail = async () => {
-    if (pendingVerification?.mode === "firebase" && auth.currentUser) {
-      await sendEmailVerification(auth.currentUser);
-    }
+  const resetPassword = async (email: string) => {
+    await sendPasswordResetEmail(auth, email.trim().toLowerCase());
   };
 
   const logout = async () => {
-    const activeToken = token || localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (activeToken) {
-      await fetch("/api/auth/logout", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${activeToken}` },
-      }).catch(() => {});
-    }
-    await signOut(auth).catch(() => {});
-    clearSession();
-    setPendingVerification(null);
+    await signOut(auth);
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        token,
-        loading,
-        pendingVerification,
-        clearPendingVerification: () => setPendingVerification(null),
-        login,
-        loginWithGoogle,
+        authReady,
+        accountKind,
+        personnel,
+        activePersonnelRole,
+        setActivePersonnelRole,
+        candidature,
+        loginWithEmail,
         registerCandidat,
-        confirmEmailVerification,
-        resendVerificationEmail,
+        resetPassword,
         logout,
-        apiFetch,
       }}
     >
       {children}
@@ -381,10 +249,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 };
 
-export function useAuth() {
+export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error("useAuth must be used inside AuthProvider");
-  }
+  if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
   return ctx;
 }

@@ -1,209 +1,151 @@
-export type UserRole =
-  | "candidat"
-  | "doctorant"
-  | "scolarite"
-  | "jury"
-  | "directeur_these"
-  | "directeur_labo"
-  | "directeur_cedoc";
+export type PersonnelRole =
+  | 'Secrétariat CEDoc'
+  | 'Jury'
+  | 'Directeur de thèse'
+  | 'Directeur du laboratoire'
+  | 'Directeur du CEDoc';
 
-export const ROLE_ROUTES: Record<UserRole, string> = {
-  candidat: "/candidat",
-  doctorant: "/doctorant",
-  scolarite: "/scolarite",
-  jury: "/jury",
-  directeur_these: "/directeur-these",
-  directeur_labo: "/directeur-laboratoire",
-  directeur_cedoc: "/directeur-cedoc",
-};
-
-export const ROLE_LABELS: Record<UserRole, string> = {
-  candidat: "Candidat",
-  doctorant: "Doctorant",
-  scolarite: "Secrétariat / Scolarité CEDoc",
-  jury: "Jury / Président",
-  directeur_these: "Directeur de thèse",
-  directeur_labo: "Directeur du laboratoire",
-  directeur_cedoc: "Directeur du CEDoc",
-};
-
-export type SubjectStatus = "En attente de validation" | "Publié" | "Refusé";
-
-export interface ThesisSubject {
-  id: string;
-  code: string;
-  title: string;
-  laboratory: string;
-  discipline: string;
-  thesisDirector: string;
-  directorId: string;
-  language: string;
-  prerequisites: string;
-  keywords: string[];
-  status: SubjectStatus;
-}
-
-export type CandidatureStatus =
-  | "Compte créé"
-  | "En dépôt"
-  | "Incomplet"
-  | "Complet"
-  | "Présélectionné"
-  | "Non présélectionné"
-  | "Convoqué"
-  | "Admis"
-  | "Non admis"
-  | "Inscrit";
-
-export type PieceStatus =
-  | "Manquante"
-  | "Reçue"
-  | "Conforme"
-  | "Non conforme";
-
-export type AiPrecheckStatus = "Conforme" | "Douteux" | "Non conforme";
-
-export type PieceSource =
-  | "Dépôt candidat"
-  | "Base interne EST Fès"
-  | "API université externe";
-
-export type CandidatureSlot =
-  | "CIN"
-  | "DIPLOME"
-  | "RELEVES_NOTES"
-  | "CV"
-  | "PROJET_THESE";
-
-export const CANDIDATURE_SLOTS: CandidatureSlot[] = [
-  "CIN",
-  "DIPLOME",
-  "RELEVES_NOTES",
-  "CV",
-  "PROJET_THESE",
+export const ALL_PERSONNEL_ROLES: PersonnelRole[] = [
+  'Secrétariat CEDoc',
+  'Jury',
+  'Directeur de thèse',
+  'Directeur du laboratoire',
+  'Directeur du CEDoc',
 ];
 
-export const CANDIDATURE_SLOT_LABELS: Record<CandidatureSlot, string> = {
-  CIN: "Pièce d'identité (CIN / Passeport)",
-  DIPLOME: "Diplôme Bac+5 (Master / Ingénieur)",
-  RELEVES_NOTES: "Relevés de notes universitaires",
-  CV: "Curriculum Vitae",
-  PROJET_THESE: "Projet de thèse",
-};
+export type StatutSujet = 'En attente' | 'Publié' | 'Refusé';
 
-/**
- * Vue Candidat d'une pièce : strictement sans données d'analyse IA.
- */
-export interface CandidaturePiecePublic {
-  slot: CandidatureSlot;
-  fileName: string;
-  source: PieceSource;
-  status: PieceStatus;
-  motif: string;
-  updatedAt: string;
+export type StatutCandidature =
+  | 'Compte créé'
+  | 'En dépôt'
+  | 'Envoyée'
+  | 'Incomplet'
+  | 'Complet'
+  | 'Présélectionné'
+  | 'Non présélectionné'
+  | 'Convoqué'
+  | 'Admis'
+  | 'Non admis'
+  | 'Inscrit';
+
+export type StatutPiece = 'Manquante' | 'Reçue' | 'Conforme' | 'Non conforme';
+
+export type StatutPrecontroleIA = 'Conforme' | 'Douteux' | 'Non conforme';
+
+export type StatutReinscription = 'En dépôt' | 'Envoyée' | 'Incomplet' | 'Validée';
+
+export type PieceSlotCandidature = 'identite' | 'diplome' | 'releves' | 'projet' | 'cv';
+
+export type PieceSlotReinscription =
+  | 'rapport_avancement'
+  | 'attestation_encadrant'
+  | 'charte_signee';
+
+export interface PersonnelRecord {
+  email: string;
+  nom: string;
+  roles: PersonnelRole[];
+  laboratoire: string;
 }
 
-/**
- * Vue Secrétariat / Scolarité CEDoc d'une pièce : inclut le pré-contrôle IA.
- */
-export interface CandidaturePieceReceptor extends CandidaturePiecePublic {
-  aiStatus: AiPrecheckStatus | null;
-  aiMotif: string;
-  contentSample?: string;
-}
-
-export interface CandidaturePublic {
+export interface LaboratoireRecord {
   id: string;
-  candidateId: string;
-  candidateName: string;
-  candidateEmail: string;
+  code: string;
+  nom: string;
+  directeurs: string[];
+  disciplines: string[];
+}
+
+export interface SujetRecord {
+  id: string;
+  intitule: string;
+  description: string;
+  discipline: string;
+  directeur: string;
+  directeurEmail: string;
+  laboratoire: string;
+  statut: StatutSujet;
+}
+
+export interface CandidatureRecord {
+  candidatId: string;
+  nom: string;
+  email: string;
+  sujetId: string;
+  sujetIntitule: string;
+  sujetDescription: string;
+  sujetDiscipline: string;
+  directeur: string;
+  directeurEmail: string;
+  laboratoire: string;
+  universiteOrigine: '' | 'EST Fès' | 'Autre';
   cne: string;
-  originInstitution: string;
-  subjectId: string;
-  subjectCode: string;
-  subjectTitle: string;
-  laboratory: string;
-  thesisDirector: string;
-  directorId: string;
-  status: CandidatureStatus;
-  delai: string;
+  recuperationAuto: boolean;
+  statut: StatutCandidature;
   nouveauDelai: string;
   convocationDate: string;
   convocationLieu: string;
+  recoursDepose: boolean;
   recoursMotif: string;
-  cedocValidated: boolean;
-  admisPublished: boolean;
-  pieces: CandidaturePiecePublic[];
-  createdAt: string;
-  updatedAt: string;
 }
 
-export interface CandidatureReceptor extends Omit<CandidaturePublic, "pieces"> {
-  pieces: CandidaturePieceReceptor[];
-}
-
-export interface PublishedAdmittedItem {
-  candidatureId: string;
-  candidateName: string;
-  subjectCode: string;
-  subjectTitle: string;
-  laboratory: string;
-  thesisDirector: string;
-}
-
-export type ReinscriptionSlot =
-  | "RAPPORT_AVANCEMENT"
-  | "ATTESTATION_ENCADREMENT"
-  | "PORTEFEUILLE_FORMATIONS";
-
-export const REINSCRIPTION_SLOTS: ReinscriptionSlot[] = [
-  "RAPPORT_AVANCEMENT",
-  "ATTESTATION_ENCADREMENT",
-  "PORTEFEUILLE_FORMATIONS",
-];
-
-export const REINSCRIPTION_SLOT_LABELS: Record<ReinscriptionSlot, string> = {
-  RAPPORT_AVANCEMENT: "Rapport annuel d'avancement des travaux",
-  ATTESTATION_ENCADREMENT: "Autorisation de réinscription du directeur de thèse",
-  PORTEFEUILLE_FORMATIONS: "Attestation des formations complémentaires",
-};
-
-export type ReinscriptionStatus =
-  | "En dépôt"
-  | "Incomplet"
-  | "Complet"
-  | "Réinscrit"
-  | "Rejeté";
-
-export interface ReinscriptionPiece {
-  slot: ReinscriptionSlot;
+export interface PieceDossierRecord {
+  ownerId: string;
+  slotId: string;
+  label: string;
   fileName: string;
-  status: PieceStatus;
+  mimeType: string;
+  sizeBytes: number;
+  storagePath: string;
+  downloadUrl: string;
+  sourceAuto: boolean;
+  statut: StatutPiece;
   motif: string;
-  updatedAt: string;
+}
+
+export interface PrecontroleIARecord {
+  candidatId: string;
+  slotId: string;
+  statut: StatutPrecontroleIA;
+  motif: string;
+  fileName: string;
 }
 
 export interface ReinscriptionRecord {
-  id: string;
   doctorantId: string;
-  doctorantName: string;
-  identifiant: string;
-  yearLabel: string;
-  subjectTitle: string;
-  thesisDirector: string;
-  laboratory: string;
-  status: ReinscriptionStatus;
-  delai: string;
-  pieces: ReinscriptionPiece[];
-  updatedAt: string;
+  nom: string;
+  email: string;
+  annee: number;
+  sujetIntitule: string;
+  directeur: string;
+  laboratoire: string;
+  statut: StatutReinscription;
+  nouveauDelai: string;
 }
 
-export interface AuthenticatedUser {
-  id: string;
-  email: string;
-  identifiant: string;
-  fullName: string;
-  role: UserRole;
-  laboratory: string;
-  emailVerified: boolean;
+export interface PublicationAdmisRecord {
+  valideeParCedoc: boolean;
+  publieeParSecretariat: boolean;
+  admis: string[];
 }
+
+export const CANDIDATURE_SLOTS: Array<{
+  slotId: PieceSlotCandidature;
+  label: string;
+  autoEligible: boolean;
+}> = [
+  { slotId: 'identite', label: "Pièce d'identité", autoEligible: false },
+  { slotId: 'diplome', label: 'Diplôme Master / Ingénieur', autoEligible: true },
+  { slotId: 'releves', label: 'Relevés de notes', autoEligible: true },
+  { slotId: 'projet', label: 'Projet de thèse', autoEligible: false },
+  { slotId: 'cv', label: 'CV scientifique', autoEligible: false },
+];
+
+export const REINSCRIPTION_SLOTS: Array<{
+  slotId: PieceSlotReinscription;
+  label: string;
+}> = [
+  { slotId: 'rapport_avancement', label: "Rapport d'avancement" },
+  { slotId: 'attestation_encadrant', label: 'Attestation du directeur de thèse' },
+  { slotId: 'charte_signee', label: 'Charte des thèses signée' },
+];

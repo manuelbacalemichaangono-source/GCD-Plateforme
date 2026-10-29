@@ -1,250 +1,83 @@
 {
   "entities": {
-    "UserProfile": {
-      "title": "UserProfile",
-      "description": "Public role and institutional assignment profile without PII.",
+    "CatalogMeta": {
+      "title": "CatalogMeta",
+      "description": "One-time initialization marker for the initial doctoral subject catalog.",
       "type": "object",
       "properties": {
-        "uid": {
-          "type": "string",
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "displayName": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 120
-        },
-        "role": {
-          "type": "string",
-          "enum": [
-            "candidat",
-            "doctorant",
-            "scolarite",
-            "jury",
-            "directeur_these",
-            "directeur_labo",
-            "directeur_cedoc"
-          ]
-        },
-        "laboratory": {
-          "type": "string",
-          "maxLength": 120
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        }
+        "seeded": { "type": "boolean", "description": "True once initial catalog has been written." },
+        "seededBy": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["uid", "displayName", "role", "laboratory", "createdAt", "updatedAt"]
+      "required": ["seeded", "seededBy", "createdAt"]
     },
-    "UserPrivateInfo": {
-      "title": "UserPrivateInfo",
-      "description": "Isolated PII profile storing email and student identifier.",
+    "Personnel": {
+      "title": "Personnel",
+      "description": "Authorized staff record keyed by lowercase email.",
       "type": "object",
       "properties": {
-        "uid": {
-          "type": "string",
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "email": {
-          "type": "string",
-          "format": "email",
-          "maxLength": 160
-        },
-        "cne": {
-          "type": "string",
-          "maxLength": 40
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        }
+        "email": { "type": "string", "maxLength": 160, "pattern": "^[a-z0-9._%+\\-]+@[a-z0-9.\\-]+\\.[a-z]{2,}$" },
+        "nom": { "type": "string", "maxLength": 120 },
+        "roles": { "type": "array", "description": "Assigned staff roles (1 to 5)." },
+        "laboratoire": { "type": "string", "maxLength": 80 },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["uid", "email", "cne", "createdAt"]
+      "required": ["email", "nom", "roles", "laboratoire", "updatedAt"]
     },
-    "StaffRegistryEntry": {
-      "title": "StaffRegistryEntry",
-      "description": "Administration-provisioned role assignment for institutional staff and doctoral students.",
+    "Laboratoire": {
+      "title": "Laboratoire",
+      "description": "Research laboratory accredited at CEDoc EST Fes.",
       "type": "object",
       "properties": {
-        "email": {
-          "type": "string",
-          "format": "email",
-          "maxLength": 160
-        },
-        "role": {
-          "type": "string",
-          "enum": [
-            "doctorant",
-            "scolarite",
-            "jury",
-            "directeur_these",
-            "directeur_labo",
-            "directeur_cedoc"
-          ]
-        },
-        "laboratory": {
-          "type": "string",
-          "maxLength": 120
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        }
+        "code": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "nom": { "type": "string", "minLength": 3, "maxLength": 180 },
+        "directeurs": { "type": "array", "description": "List of accredited thesis directors in this laboratory." },
+        "disciplines": { "type": "array", "description": "Disciplines covered by this laboratory." },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["email", "role", "laboratory", "createdAt"]
+      "required": ["code", "nom", "directeurs", "disciplines", "createdAt"]
     },
-    "AdminRecord": {
-      "title": "AdminRecord",
-      "description": "System administrator UID record.",
+    "Sujet": {
+      "title": "Sujet",
+      "description": "Doctoral thesis subject proposed by a thesis director and validated by a laboratory director.",
       "type": "object",
       "properties": {
-        "uid": {
-          "type": "string",
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        }
+        "intitule": { "type": "string", "minLength": 5, "maxLength": 240 },
+        "description": { "type": "string", "minLength": 10, "maxLength": 1200 },
+        "discipline": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "directeur": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "directeurEmail": { "type": "string", "maxLength": 160 },
+        "laboratoire": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "statut": { "type": "string", "enum": ["En attente", "Publié", "Refusé"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["uid", "createdAt"]
+      "required": ["intitule", "description", "discipline", "directeur", "directeurEmail", "laboratoire", "statut", "createdAt", "updatedAt"]
     },
-    "ThesisSubjectDoc": {
-      "title": "ThesisSubjectDoc",
-      "description": "Doctoral thesis subject managed by thesis directors and validated by laboratory directors.",
+    "Candidature": {
+      "title": "Candidature",
+      "description": "Doctoral application owned by a single candidate UID.",
       "type": "object",
       "properties": {
-        "code": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 32,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "title": {
-          "type": "string",
-          "minLength": 5,
-          "maxLength": 240
-        },
-        "laboratory": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 120
-        },
-        "discipline": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 120
-        },
-        "thesisDirector": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 120
-        },
-        "directorUid": {
-          "type": "string",
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "language": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 60
-        },
-        "prerequisites": {
-          "type": "string",
-          "maxLength": 500
-        },
-        "keywords": {
-          "type": "array",
-          "description": "Bounded list of up to 10 subject keywords."
-        },
-        "staffViewerEmails": {
-          "type": "array",
-          "description": "Bounded list of up to 10 institutional viewer emails."
-        },
-        "status": {
-          "type": "string",
-          "enum": ["En attente de validation", "Publié", "Refusé"]
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "code",
-        "title",
-        "laboratory",
-        "discipline",
-        "thesisDirector",
-        "directorUid",
-        "language",
-        "prerequisites",
-        "keywords",
-        "staffViewerEmails",
-        "status",
-        "createdAt",
-        "updatedAt"
-      ]
-    },
-    "CandidatureDoc": {
-      "title": "CandidatureDoc",
-      "description": "Doctoral candidature tracking state transitions without scores.",
-      "type": "object",
-      "properties": {
-        "candidateUid": {
-          "type": "string",
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "candidateName": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 120
-        },
-        "subjectId": {
-          "type": "string",
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "subjectCode": {
-          "type": "string",
-          "maxLength": 32
-        },
-        "subjectTitle": {
-          "type": "string",
-          "maxLength": 240
-        },
-        "laboratory": {
-          "type": "string",
-          "maxLength": 120
-        },
-        "directorUid": {
-          "type": "string",
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "staffViewerEmails": {
-          "type": "array",
-          "description": "Bounded list of up to 10 institutional viewer emails."
-        },
-        "status": {
+        "candidatId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "nom": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "maxLength": 160 },
+        "sujetId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "sujetIntitule": { "type": "string", "maxLength": 240 },
+        "sujetDescription": { "type": "string", "maxLength": 1200 },
+        "sujetDiscipline": { "type": "string", "maxLength": 120 },
+        "directeur": { "type": "string", "maxLength": 120 },
+        "directeurEmail": { "type": "string", "maxLength": 160 },
+        "laboratoire": { "type": "string", "maxLength": 80 },
+        "universiteOrigine": { "type": "string", "enum": ["", "EST Fès", "Autre"] },
+        "cne": { "type": "string", "maxLength": 40 },
+        "recuperationAuto": { "type": "boolean" },
+        "statut": {
           "type": "string",
           "enum": [
             "Compte créé",
             "En dépôt",
+            "Envoyée",
             "Incomplet",
             "Complet",
             "Présélectionné",
@@ -255,345 +88,169 @@
             "Inscrit"
           ]
         },
-        "delai": {
-          "type": "string",
-          "maxLength": 20
-        },
-        "nouveauDelai": {
-          "type": "string",
-          "maxLength": 20
-        },
-        "convocationDate": {
-          "type": "string",
-          "maxLength": 40
-        },
-        "convocationLieu": {
-          "type": "string",
-          "maxLength": 160
-        },
-        "recoursMotif": {
-          "type": "string",
-          "maxLength": 500
-        },
-        "cedocValidated": {
-          "type": "boolean"
-        },
-        "admisPublished": {
-          "type": "boolean"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        }
+        "nouveauDelai": { "type": "string", "maxLength": 30 },
+        "convocationDate": { "type": "string", "maxLength": 40 },
+        "convocationLieu": { "type": "string", "maxLength": 160 },
+        "recoursDepose": { "type": "boolean" },
+        "recoursMotif": { "type": "string", "maxLength": 800 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": [
-        "candidateUid",
-        "candidateName",
-        "subjectId",
-        "subjectCode",
-        "subjectTitle",
-        "laboratory",
-        "directorUid",
-        "staffViewerEmails",
-        "status",
-        "delai",
+        "candidatId",
+        "nom",
+        "email",
+        "sujetId",
+        "sujetIntitule",
+        "sujetDescription",
+        "sujetDiscipline",
+        "directeur",
+        "directeurEmail",
+        "laboratoire",
+        "universiteOrigine",
+        "cne",
+        "recuperationAuto",
+        "statut",
         "nouveauDelai",
         "convocationDate",
         "convocationLieu",
+        "recoursDepose",
         "recoursMotif",
-        "cedocValidated",
-        "admisPublished",
         "createdAt",
         "updatedAt"
       ]
     },
-    "CandidaturePieceDoc": {
-      "title": "CandidaturePieceDoc",
-      "description": "Individual document slot uploaded by candidate or retrieved from academic database and validated by Scolarite CEDoc.",
+    "PieceDossier": {
+      "title": "PieceDossier",
+      "description": "Uploaded or institutionally retrieved supporting document for an application or re-enrollment.",
       "type": "object",
       "properties": {
-        "candidatureId": {
-          "type": "string",
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "candidateUid": {
-          "type": "string",
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "slot": {
-          "type": "string",
-          "enum": ["CIN", "DIPLOME", "RELEVES_NOTES", "CV", "PROJET_THESE"]
-        },
-        "fileName": {
-          "type": "string",
-          "maxLength": 180
-        },
-        "source": {
-          "type": "string",
-          "enum": ["Dépôt candidat", "Base interne EST Fès", "API université externe"]
-        },
-        "status": {
-          "type": "string",
-          "enum": ["Manquante", "Reçue", "Conforme", "Non conforme"]
-        },
-        "motif": {
-          "type": "string",
-          "maxLength": 400
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        }
+        "ownerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "slotId": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "label": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "fileName": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "mimeType": { "type": "string", "maxLength": 80 },
+        "sizeBytes": { "type": "number" },
+        "storagePath": { "type": "string", "maxLength": 300 },
+        "downloadUrl": { "type": "string", "maxLength": 1000 },
+        "sourceAuto": { "type": "boolean" },
+        "statut": { "type": "string", "enum": ["Manquante", "Reçue", "Conforme", "Non conforme"] },
+        "motif": { "type": "string", "maxLength": 500 },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": [
-        "candidatureId",
-        "candidateUid",
-        "slot",
+        "ownerId",
+        "slotId",
+        "label",
         "fileName",
-        "source",
-        "status",
+        "mimeType",
+        "sizeBytes",
+        "storagePath",
+        "downloadUrl",
+        "sourceAuto",
+        "statut",
         "motif",
+        "updatedAt"
+      ]
+    },
+    "PrecontroleIA": {
+      "title": "PrecontroleIA",
+      "description": "Confidential AI conformity pre-check visible strictly to Secretariat CEDoc.",
+      "type": "object",
+      "properties": {
+        "candidatId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "slotId": { "type": "string", "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "statut": { "type": "string", "enum": ["Conforme", "Douteux", "Non conforme"] },
+        "motif": { "type": "string", "maxLength": 500 },
+        "fileName": { "type": "string", "maxLength": 180 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["candidatId", "slotId", "statut", "motif", "fileName", "updatedAt"]
+    },
+    "Reinscription": {
+      "title": "Reinscription",
+      "description": "Annual re-enrollment record for an enrolled doctoral student.",
+      "type": "object",
+      "properties": {
+        "doctorantId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "nom": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "maxLength": 160 },
+        "annee": { "type": "number" },
+        "sujetIntitule": { "type": "string", "maxLength": 240 },
+        "directeur": { "type": "string", "maxLength": 120 },
+        "laboratoire": { "type": "string", "maxLength": 80 },
+        "statut": { "type": "string", "enum": ["En dépôt", "Envoyée", "Incomplet", "Validée"] },
+        "nouveauDelai": { "type": "string", "maxLength": 30 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "doctorantId",
+        "nom",
+        "email",
+        "annee",
+        "sujetIntitule",
+        "directeur",
+        "laboratoire",
+        "statut",
+        "nouveauDelai",
         "createdAt",
         "updatedAt"
       ]
     },
-    "PieceAiControlDoc": {
-      "title": "PieceAiControlDoc",
-      "description": "System and receptor-only AI pre-check result isolated from candidate read access.",
+    "PublicationAdmis": {
+      "title": "PublicationAdmis",
+      "description": "Official validation and publication status of the final admitted list.",
       "type": "object",
       "properties": {
-        "candidatureId": {
-          "type": "string",
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "aiStatus": {
-          "type": "string",
-          "enum": ["Conforme", "Douteux", "Non conforme"]
-        },
-        "aiMotif": {
-          "type": "string",
-          "maxLength": 400
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        }
+        "valideeParCedoc": { "type": "boolean" },
+        "publieeParSecretariat": { "type": "boolean" },
+        "admis": { "type": "array", "description": "List of admitted candidate display entries." },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["candidatureId", "aiStatus", "aiMotif", "updatedAt"]
-    },
-    "ReinscriptionDoc": {
-      "title": "ReinscriptionDoc",
-      "description": "Doctoral student annual re-enrollment record (2A/3A+).",
-      "type": "object",
-      "properties": {
-        "doctorantUid": {
-          "type": "string",
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "doctorantName": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 120
-        },
-        "yearLabel": {
-          "type": "string",
-          "maxLength": 32
-        },
-        "subjectTitle": {
-          "type": "string",
-          "maxLength": 240
-        },
-        "thesisDirector": {
-          "type": "string",
-          "maxLength": 120
-        },
-        "staffViewerEmails": {
-          "type": "array",
-          "description": "Bounded list of up to 10 institutional viewer emails."
-        },
-        "status": {
-          "type": "string",
-          "enum": ["En dépôt", "Incomplet", "Complet", "Réinscrit", "Rejeté"]
-        },
-        "delai": {
-          "type": "string",
-          "maxLength": 20
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "doctorantUid",
-        "doctorantName",
-        "yearLabel",
-        "subjectTitle",
-        "thesisDirector",
-        "staffViewerEmails",
-        "status",
-        "delai",
-        "createdAt",
-        "updatedAt"
-      ]
-    },
-    "ReinscriptionPieceDoc": {
-      "title": "ReinscriptionPieceDoc",
-      "description": "Document slot for doctoral student re-enrollment.",
-      "type": "object",
-      "properties": {
-        "reinscriptionId": {
-          "type": "string",
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "doctorantUid": {
-          "type": "string",
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "slot": {
-          "type": "string",
-          "enum": [
-            "RAPPORT_AVANCEMENT",
-            "ATTESTATION_ENCADREMENT",
-            "PORTEFEUILLE_FORMATIONS"
-          ]
-        },
-        "fileName": {
-          "type": "string",
-          "maxLength": 180
-        },
-        "status": {
-          "type": "string",
-          "enum": ["Manquante", "Reçue", "Conforme", "Non conforme"]
-        },
-        "motif": {
-          "type": "string",
-          "maxLength": 400
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "reinscriptionId",
-        "doctorantUid",
-        "slot",
-        "fileName",
-        "status",
-        "motif",
-        "createdAt",
-        "updatedAt"
-      ]
-    },
-    "PublishedAdmittedDoc": {
-      "title": "PublishedAdmittedDoc",
-      "description": "Publicly readable entry of officially admitted candidates after CEDoc Director validation and Scolarite publication.",
-      "type": "object",
-      "properties": {
-        "candidatureId": {
-          "type": "string",
-          "maxLength": 128,
-          "pattern": "^[a-zA-Z0-9_\\-]+$"
-        },
-        "candidateName": {
-          "type": "string",
-          "minLength": 2,
-          "maxLength": 120
-        },
-        "subjectCode": {
-          "type": "string",
-          "maxLength": 32
-        },
-        "subjectTitle": {
-          "type": "string",
-          "maxLength": 240
-        },
-        "laboratory": {
-          "type": "string",
-          "maxLength": 120
-        },
-        "publishedAt": {
-          "type": "string",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "candidatureId",
-        "candidateName",
-        "subjectCode",
-        "subjectTitle",
-        "laboratory",
-        "publishedAt"
-      ]
+      "required": ["valideeParCedoc", "publieeParSecretariat", "admis", "updatedAt"]
     }
   },
   "firestore": {
-    "/users/{userId}": {
-      "schema": { "$ref": "#/entities/UserProfile" },
-      "description": "Non-PII user role profile."
+    "/catalog_meta/{metaId}": {
+      "schema": { "$ref": "#/entities/CatalogMeta" },
+      "description": "Tracks one-time initialization of the 27 subjects and 5 laboratories."
     },
-    "/user_private/{userId}": {
-      "schema": { "$ref": "#/entities/UserPrivateInfo" },
-      "description": "Isolated PII record accessible only to the owner or admin."
+    "/personnel/{emailId}": {
+      "schema": { "$ref": "#/entities/Personnel" },
+      "description": "Staff accounts authorized by lowercase email."
     },
-    "/staff_registry/{emailId}": {
-      "schema": { "$ref": "#/entities/StaffRegistryEntry" },
-      "description": "Institutional staff and doctorant pre-assigned roles."
-    },
-    "/admins/{adminUid}": {
-      "schema": { "$ref": "#/entities/AdminRecord" },
-      "description": "System administrator UIDs."
+    "/laboratoires/{labId}": {
+      "schema": { "$ref": "#/entities/Laboratoire" },
+      "description": "Accredited doctoral research laboratories."
     },
     "/sujets/{sujetId}": {
-      "schema": { "$ref": "#/entities/ThesisSubjectDoc" },
+      "schema": { "$ref": "#/entities/Sujet" },
       "description": "Doctoral thesis subjects."
     },
-    "/candidatures/{candidatureId}": {
-      "schema": { "$ref": "#/entities/CandidatureDoc" },
-      "description": "Candidate applications."
+    "/candidatures/{candidatId}": {
+      "schema": { "$ref": "#/entities/Candidature" },
+      "description": "Doctoral candidatures indexed by candidate UID."
     },
-    "/candidatures/{candidatureId}/pieces/{pieceId}": {
-      "schema": { "$ref": "#/entities/CandidaturePieceDoc" },
-      "description": "Uploaded or retrieved pieces for a candidature."
+    "/candidatures/{candidatId}/pieces/{slotId}": {
+      "schema": { "$ref": "#/entities/PieceDossier" },
+      "description": "Supporting documents uploaded for a candidature."
     },
-    "/candidatures/{candidatureId}/ai_controls/{pieceId}": {
-      "schema": { "$ref": "#/entities/PieceAiControlDoc" },
-      "description": "Receptor-only AI pre-check analyses."
+    "/candidatures/{candidatId}/precontrole/{slotId}": {
+      "schema": { "$ref": "#/entities/PrecontroleIA" },
+      "description": "Confidential AI conformity pre-check readable only by Secretariat CEDoc."
     },
-    "/reinscriptions/{reinscriptionId}": {
-      "schema": { "$ref": "#/entities/ReinscriptionDoc" },
-      "description": "Doctoral student annual re-enrollments."
+    "/reinscriptions/{doctorantId}": {
+      "schema": { "$ref": "#/entities/Reinscription" },
+      "description": "Annual doctoral re-enrollment dossiers."
     },
-    "/reinscriptions/{reinscriptionId}/pieces/{pieceId}": {
-      "schema": { "$ref": "#/entities/ReinscriptionPieceDoc" },
-      "description": "Uploaded pieces for doctoral re-enrollment."
+    "/reinscriptions/{doctorantId}/pieces/{slotId}": {
+      "schema": { "$ref": "#/entities/PieceDossier" },
+      "description": "Supporting documents for annual re-enrollment."
     },
-    "/admis_publies/{candidatureId}": {
-      "schema": { "$ref": "#/entities/PublishedAdmittedDoc" },
-      "description": "Officially published admitted candidates list."
+    "/publication_admis/{pubId}": {
+      "schema": { "$ref": "#/entities/PublicationAdmis" },
+      "description": "Singleton official admitted list validation and publication record."
     }
   }
 }

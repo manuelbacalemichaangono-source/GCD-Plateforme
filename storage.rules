@@ -1,0 +1,47 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidUploadFile() {
+      return request.resource != null
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('^(application/pdf|image/jpeg|image/png)$');
+    }
+
+    function authEmailLower() {
+      return isSignedIn() && request.auth.token.email is string
+        ? request.auth.token.email.lower()
+        : '';
+    }
+
+    function isAuthorizedReader() {
+      return isSignedIn()
+        && authEmailLower().size() >= 5
+        && firestore.exists(/databases/(default)/documents/personnel/$(authEmailLower()));
+    }
+
+    match /candidatures/{candidatId}/{slotId}/{fileName} {
+      allow read: if isSignedIn() && (request.auth.uid == candidatId || isAuthorizedReader());
+      allow write: if isSignedIn()
+        && request.auth.uid == candidatId
+        && slotId in ['identite', 'diplome', 'releves', 'projet', 'cv']
+        && isValidUploadFile();
+    }
+
+    match /reinscriptions/{doctorantId}/{slotId}/{fileName} {
+      allow read: if isSignedIn() && (request.auth.uid == doctorantId || isAuthorizedReader());
+      allow write: if isSignedIn()
+        && request.auth.uid == doctorantId
+        && slotId in ['rapport_avancement', 'attestation_encadrant', 'charte_signee']
+        && isValidUploadFile();
+    }
+  }
+}
