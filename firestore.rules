@@ -1,0 +1,716 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidEmailDocId(id) {
+      return id is string && id.size() >= 3 && id.size() <= 160 && id.matches('^[a-zA-Z0-9._%+\\-@]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerified() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isVerified() && (
+        request.auth.token.email == 'manuelbacale.michaangono@usmba.ac.ma' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function hasRole(expectedRole) {
+      return isVerified() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == expectedRole;
+    }
+
+    function isBoundedStringArray(arr, maxLen) {
+      return arr is list &&
+        arr.size() <= maxLen &&
+        (arr.size() == 0 || (arr[0] is string && arr[0].size() <= 160));
+    }
+
+    // --- Validation Blueprints ---
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'role', 'laboratory', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'displayName', 'role', 'laboratory', 'createdAt', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        data.displayName is string && data.displayName.size() >= 2 && data.displayName.size() <= 120 &&
+        data.role in ['candidat', 'doctorant', 'scolarite', 'jury', 'directeur_these', 'directeur_labo', 'directeur_cedoc'] &&
+        data.laboratory is string && data.laboratory.size() <= 120 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivate(data) {
+      return data.keys().hasAll(['uid', 'email', 'cne', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'cne', 'createdAt']) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.cne is string && data.cne.size() <= 40 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidStaffRegistry(data) {
+      return data.keys().hasAll(['email', 'role', 'laboratory', 'createdAt']) &&
+        data.keys().hasOnly(['email', 'role', 'laboratory', 'createdAt']) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.role in ['doctorant', 'scolarite', 'jury', 'directeur_these', 'directeur_labo', 'directeur_cedoc'] &&
+        data.laboratory is string && data.laboratory.size() <= 120 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidAdminRecord(data) {
+      return data.keys().hasAll(['uid', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'createdAt']) &&
+        isValidId(data.uid) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidSubject(data) {
+      return data.keys().hasAll([
+          'code', 'title', 'laboratory', 'discipline', 'thesisDirector',
+          'directorUid', 'language', 'prerequisites', 'keywords',
+          'staffViewerEmails', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'code', 'title', 'laboratory', 'discipline', 'thesisDirector',
+          'directorUid', 'language', 'prerequisites', 'keywords',
+          'staffViewerEmails', 'status', 'createdAt', 'updatedAt'
+        ]) &&
+        data.code is string && data.code.size() >= 2 && data.code.size() <= 32 && data.code.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.title is string && data.title.size() >= 5 && data.title.size() <= 240 &&
+        data.laboratory is string && data.laboratory.size() >= 2 && data.laboratory.size() <= 120 &&
+        data.discipline is string && data.discipline.size() >= 2 && data.discipline.size() <= 120 &&
+        data.thesisDirector is string && data.thesisDirector.size() >= 2 && data.thesisDirector.size() <= 120 &&
+        isValidId(data.directorUid) &&
+        data.language is string && data.language.size() >= 2 && data.language.size() <= 60 &&
+        data.prerequisites is string && data.prerequisites.size() <= 500 &&
+        isBoundedStringArray(data.keywords, 10) &&
+        isBoundedStringArray(data.staffViewerEmails, 10) &&
+        data.status in ['En attente de validation', 'Publié', 'Refusé'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCandidature(data) {
+      return data.keys().hasAll([
+          'candidateUid', 'candidateName', 'subjectId', 'subjectCode',
+          'subjectTitle', 'laboratory', 'directorUid', 'staffViewerEmails',
+          'status', 'delai', 'nouveauDelai', 'convocationDate',
+          'convocationLieu', 'recoursMotif', 'cedocValidated',
+          'admisPublished', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'candidateUid', 'candidateName', 'subjectId', 'subjectCode',
+          'subjectTitle', 'laboratory', 'directorUid', 'staffViewerEmails',
+          'status', 'delai', 'nouveauDelai', 'convocationDate',
+          'convocationLieu', 'recoursMotif', 'cedocValidated',
+          'admisPublished', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.candidateUid) &&
+        data.candidateName is string && data.candidateName.size() >= 2 && data.candidateName.size() <= 120 &&
+        isValidId(data.subjectId) &&
+        data.subjectCode is string && data.subjectCode.size() <= 32 &&
+        data.subjectTitle is string && data.subjectTitle.size() <= 240 &&
+        data.laboratory is string && data.laboratory.size() <= 120 &&
+        isValidId(data.directorUid) &&
+        isBoundedStringArray(data.staffViewerEmails, 10) &&
+        data.status in [
+          'Compte créé', 'En dépôt', 'Incomplet', 'Complet',
+          'Présélectionné', 'Non présélectionné', 'Convoqué',
+          'Admis', 'Non admis', 'Inscrit'
+        ] &&
+        data.delai is string && data.delai.size() <= 20 &&
+        data.nouveauDelai is string && data.nouveauDelai.size() <= 20 &&
+        data.convocationDate is string && data.convocationDate.size() <= 40 &&
+        data.convocationLieu is string && data.convocationLieu.size() <= 160 &&
+        data.recoursMotif is string && data.recoursMotif.size() <= 500 &&
+        data.cedocValidated is bool &&
+        data.admisPublished is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCandidaturePiece(data) {
+      return data.keys().hasAll([
+          'candidatureId', 'candidateUid', 'slot', 'fileName',
+          'source', 'status', 'motif', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'candidatureId', 'candidateUid', 'slot', 'fileName',
+          'source', 'status', 'motif', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.candidatureId) &&
+        isValidId(data.candidateUid) &&
+        data.slot in ['CIN', 'DIPLOME', 'RELEVES_NOTES', 'CV', 'PROJET_THESE'] &&
+        data.fileName is string && data.fileName.size() <= 180 &&
+        data.source in ['Dépôt candidat', 'Base interne EST Fès', 'API université externe'] &&
+        data.status in ['Manquante', 'Reçue', 'Conforme', 'Non conforme'] &&
+        data.motif is string && data.motif.size() <= 400 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPieceAiControl(data) {
+      return data.keys().hasAll(['candidatureId', 'aiStatus', 'aiMotif', 'updatedAt']) &&
+        data.keys().hasOnly(['candidatureId', 'aiStatus', 'aiMotif', 'updatedAt']) &&
+        isValidId(data.candidatureId) &&
+        data.aiStatus in ['Conforme', 'Douteux', 'Non conforme'] &&
+        data.aiMotif is string && data.aiMotif.size() <= 400 &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidReinscription(data) {
+      return data.keys().hasAll([
+          'doctorantUid', 'doctorantName', 'yearLabel', 'subjectTitle',
+          'thesisDirector', 'staffViewerEmails', 'status', 'delai',
+          'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'doctorantUid', 'doctorantName', 'yearLabel', 'subjectTitle',
+          'thesisDirector', 'staffViewerEmails', 'status', 'delai',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.doctorantUid) &&
+        data.doctorantName is string && data.doctorantName.size() >= 2 && data.doctorantName.size() <= 120 &&
+        data.yearLabel is string && data.yearLabel.size() <= 32 &&
+        data.subjectTitle is string && data.subjectTitle.size() <= 240 &&
+        data.thesisDirector is string && data.thesisDirector.size() <= 120 &&
+        isBoundedStringArray(data.staffViewerEmails, 10) &&
+        data.status in ['En dépôt', 'Incomplet', 'Complet', 'Réinscrit', 'Rejeté'] &&
+        data.delai is string && data.delai.size() <= 20 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidReinscriptionPiece(data) {
+      return data.keys().hasAll([
+          'reinscriptionId', 'doctorantUid', 'slot', 'fileName',
+          'status', 'motif', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'reinscriptionId', 'doctorantUid', 'slot', 'fileName',
+          'status', 'motif', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.reinscriptionId) &&
+        isValidId(data.doctorantUid) &&
+        data.slot in ['RAPPORT_AVANCEMENT', 'ATTESTATION_ENCADREMENT', 'PORTEFEUILLE_FORMATIONS'] &&
+        data.fileName is string && data.fileName.size() <= 180 &&
+        data.status in ['Manquante', 'Reçue', 'Conforme', 'Non conforme'] &&
+        data.motif is string && data.motif.size() <= 400 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPublishedAdmitted(data) {
+      return data.keys().hasAll([
+          'candidatureId', 'candidateName', 'subjectCode',
+          'subjectTitle', 'laboratory', 'publishedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'candidatureId', 'candidateName', 'subjectCode',
+          'subjectTitle', 'laboratory', 'publishedAt'
+        ]) &&
+        isValidId(data.candidatureId) &&
+        data.candidateName is string && data.candidateName.size() >= 2 && data.candidateName.size() <= 120 &&
+        data.subjectCode is string && data.subjectCode.size() <= 32 &&
+        data.subjectTitle is string && data.subjectTitle.size() <= 240 &&
+        data.laboratory is string && data.laboratory.size() <= 120 &&
+        data.publishedAt is timestamp;
+    }
+
+    // --- Collection Match Blocks ---
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if false;
+
+      allow create: if isVerified() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == userId &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            request.auth.uid == userId &&
+            incoming().role == 'candidat' &&
+            incoming().laboratory == ''
+          ) ||
+          (
+            request.auth.uid == userId &&
+            exists(/databases/$(database)/documents/staff_registry/$(request.auth.token.email)) &&
+            get(/databases/$(database)/documents/staff_registry/$(request.auth.token.email)).data.role == incoming().role &&
+            get(/databases/$(database)/documents/staff_registry/$(request.auth.token.email)).data.laboratory == incoming().laboratory
+          )
+        );
+
+      allow update: if isVerified() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            isOwner(userId) &&
+            incoming().role == existing().role &&
+            incoming().laboratory == existing().laboratory &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    match /user_private/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if false;
+
+      allow create: if isVerified() &&
+        isValidId(userId) &&
+        isValidUserPrivate(incoming()) &&
+        incoming().uid == userId &&
+        incoming().createdAt == request.time &&
+        (
+          isAdmin() ||
+          (isOwner(userId) && incoming().email == request.auth.token.email)
+        );
+
+      allow update: if isVerified() &&
+        isValidId(userId) &&
+        isValidUserPrivate(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().email == existing().email &&
+        incoming().createdAt == existing().createdAt &&
+        (
+          isAdmin() ||
+          (
+            isOwner(userId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['cne'])
+          )
+        );
+
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    match /staff_registry/{emailId} {
+      allow get: if isValidEmailDocId(emailId) &&
+        isVerified() &&
+        (request.auth.token.email == emailId || isAdmin());
+      allow list: if false;
+
+      allow create: if isVerified() &&
+        isValidEmailDocId(emailId) &&
+        isValidStaffRegistry(incoming()) &&
+        incoming().email == emailId &&
+        incoming().createdAt == request.time &&
+        isAdmin();
+
+      allow update: if isVerified() &&
+        isValidEmailDocId(emailId) &&
+        isValidStaffRegistry(incoming()) &&
+        incoming().email == existing().email &&
+        incoming().createdAt == existing().createdAt &&
+        isAdmin();
+
+      allow delete: if isValidEmailDocId(emailId) && isAdmin();
+    }
+
+    match /admins/{adminUid} {
+      allow get: if isValidId(adminUid) && (isOwner(adminUid) || isAdmin());
+      allow list: if false;
+
+      allow create: if isVerified() &&
+        isValidId(adminUid) &&
+        isValidAdminRecord(incoming()) &&
+        incoming().uid == adminUid &&
+        incoming().createdAt == request.time &&
+        isAdmin();
+
+      allow update: if false;
+      allow delete: if isValidId(adminUid) && isAdmin();
+    }
+
+    match /sujets/{sujetId} {
+      allow get: if isValidId(sujetId) && (
+        existing().status == 'Publié' ||
+        (isVerified() && existing().directorUid == request.auth.uid) ||
+        (hasRole('directeur_labo') && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.laboratory == existing().laboratory) ||
+        hasRole('scolarite') ||
+        isAdmin()
+      );
+
+      allow list: if existing().status == 'Publié' ||
+        (isVerified() && existing().directorUid == request.auth.uid) ||
+        (isVerified() && request.auth.token.email in existing().staffViewerEmails);
+
+      allow create: if isVerified() &&
+        isValidId(sujetId) &&
+        isValidSubject(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            hasRole('directeur_these') &&
+            incoming().directorUid == request.auth.uid &&
+            incoming().status == 'En attente de validation' &&
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.laboratory == incoming().laboratory
+          )
+        );
+
+      allow update: if isVerified() &&
+        isValidId(sujetId) &&
+        isValidSubject(incoming()) &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().directorUid == existing().directorUid &&
+        incoming().laboratory == existing().laboratory &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            hasRole('directeur_these') &&
+            existing().directorUid == request.auth.uid &&
+            incoming().status == 'En attente de validation' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'title', 'discipline', 'language', 'prerequisites', 'keywords', 'status', 'updatedAt'
+            ])
+          ) ||
+          (
+            hasRole('directeur_labo') &&
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.laboratory == existing().laboratory &&
+            incoming().status in ['Publié', 'Refusé'] &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isValidId(sujetId) && isAdmin();
+    }
+
+    match /candidatures/{candidatureId} {
+      allow get: if isValidId(candidatureId) && (
+        isOwner(existing().candidateUid) ||
+        (isVerified() && existing().directorUid == request.auth.uid) ||
+        hasRole('scolarite') ||
+        hasRole('jury') ||
+        hasRole('directeur_cedoc') ||
+        isAdmin()
+      );
+
+      allow list: if isVerified() && (
+        existing().candidateUid == request.auth.uid ||
+        existing().directorUid == request.auth.uid ||
+        request.auth.token.email in existing().staffViewerEmails
+      );
+
+      allow create: if isVerified() &&
+        isValidId(candidatureId) &&
+        isValidCandidature(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/sujets/$(incoming().subjectId)) &&
+        get(/databases/$(database)/documents/sujets/$(incoming().subjectId)).data.status == 'Publié' &&
+        (
+          isAdmin() ||
+          (
+            hasRole('candidat') &&
+            incoming().candidateUid == request.auth.uid &&
+            incoming().status == 'Compte créé' &&
+            incoming().cedocValidated == false &&
+            incoming().admisPublished == false &&
+            incoming().recoursMotif == ''
+          )
+        );
+
+      allow update: if isVerified() &&
+        isValidId(candidatureId) &&
+        isValidCandidature(incoming()) &&
+        incoming().candidateUid == existing().candidateUid &&
+        incoming().subjectId == existing().subjectId &&
+        incoming().directorUid == existing().directorUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            isOwner(existing().candidateUid) &&
+            existing().status == 'Compte créé' &&
+            incoming().status == 'En dépôt' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          ) ||
+          (
+            isOwner(existing().candidateUid) &&
+            existing().status == 'Non admis' &&
+            existing().recoursMotif == '' &&
+            incoming().recoursMotif.size() >= 5 &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['recoursMotif', 'updatedAt'])
+          ) ||
+          (
+            hasRole('scolarite') &&
+            existing().status != 'Inscrit' &&
+            existing().status != 'Non présélectionné' &&
+            incoming().status in ['Incomplet', 'Complet', 'Convoqué', 'Non admis', 'Inscrit'] &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'nouveauDelai', 'convocationDate', 'convocationLieu', 'admisPublished', 'updatedAt'
+            ]) &&
+            (!incoming().admisPublished || existing().cedocValidated == true)
+          ) ||
+          (
+            hasRole('jury') &&
+            existing().status in ['Complet', 'Présélectionné', 'Convoqué'] &&
+            incoming().status in ['Présélectionné', 'Non présélectionné', 'Convoqué', 'Admis', 'Non admis'] &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'convocationDate', 'convocationLieu', 'updatedAt'
+            ])
+          ) ||
+          (
+            hasRole('directeur_cedoc') &&
+            existing().status == 'Admis' &&
+            incoming().cedocValidated == true &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['cedocValidated', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isValidId(candidatureId) && isAdmin();
+
+      // Master Gate Subcollection: Pieces (retrieved by fixed slot ID via get, or owner list)
+      match /pieces/{pieceId} {
+        allow get: if isValidId(candidatureId) && isValidId(pieceId) &&
+          exists(/databases/$(database)/documents/candidatures/$(candidatureId)) &&
+          (
+            get(/databases/$(database)/documents/candidatures/$(candidatureId)).data.candidateUid == request.auth.uid ||
+            hasRole('scolarite') ||
+            isAdmin()
+          );
+
+        allow list: if isVerified() && existing().candidateUid == request.auth.uid;
+
+        allow create: if isVerified() &&
+          isValidId(candidatureId) &&
+          isValidId(pieceId) &&
+          isValidCandidaturePiece(incoming()) &&
+          incoming().candidatureId == candidatureId &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/candidatures/$(candidatureId)) &&
+          (
+            isAdmin() ||
+            (
+              get(/databases/$(database)/documents/candidatures/$(candidatureId)).data.candidateUid == request.auth.uid &&
+              get(/databases/$(database)/documents/candidatures/$(candidatureId)).data.status in ['Compte créé', 'En dépôt', 'Incomplet'] &&
+              incoming().candidateUid == request.auth.uid &&
+              incoming().status == 'Reçue' &&
+              incoming().motif == ''
+            )
+          );
+
+        allow update: if isVerified() &&
+          isValidId(candidatureId) &&
+          isValidId(pieceId) &&
+          isValidCandidaturePiece(incoming()) &&
+          incoming().candidatureId == existing().candidatureId &&
+          incoming().candidateUid == existing().candidateUid &&
+          incoming().slot == existing().slot &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/candidatures/$(candidatureId)) &&
+          (
+            isAdmin() ||
+            (
+              get(/databases/$(database)/documents/candidatures/$(candidatureId)).data.candidateUid == request.auth.uid &&
+              get(/databases/$(database)/documents/candidatures/$(candidatureId)).data.status in ['Compte créé', 'En dépôt', 'Incomplet'] &&
+              existing().status in ['Manquante', 'Reçue', 'Non conforme'] &&
+              incoming().status == 'Reçue' &&
+              incoming().motif == '' &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['fileName', 'source', 'status', 'motif', 'updatedAt'])
+            ) ||
+            (
+              hasRole('scolarite') &&
+              get(/databases/$(database)/documents/candidatures/$(candidatureId)).data.status != 'Inscrit' &&
+              incoming().status in ['Conforme', 'Non conforme'] &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'motif', 'updatedAt'])
+            )
+          );
+
+        allow delete: if isValidId(candidatureId) && isValidId(pieceId) && isAdmin();
+      }
+
+      // Master Gate Subcollection: System/Receptor-Only AI Pre-Check
+      match /ai_controls/{pieceId} {
+        allow get: if isValidId(candidatureId) && isValidId(pieceId) &&
+          exists(/databases/$(database)/documents/candidatures/$(candidatureId)) &&
+          (hasRole('scolarite') || isAdmin());
+
+        allow list: if false;
+
+        allow create: if isVerified() &&
+          isValidId(candidatureId) &&
+          isValidId(pieceId) &&
+          isValidPieceAiControl(incoming()) &&
+          incoming().candidatureId == candidatureId &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/candidatures/$(candidatureId)) &&
+          (hasRole('scolarite') || isAdmin());
+
+        allow update: if isVerified() &&
+          isValidId(candidatureId) &&
+          isValidId(pieceId) &&
+          isValidPieceAiControl(incoming()) &&
+          incoming().candidatureId == existing().candidatureId &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/candidatures/$(candidatureId)) &&
+          (hasRole('scolarite') || isAdmin()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['aiStatus', 'aiMotif', 'updatedAt']);
+
+        allow delete: if isValidId(candidatureId) && isValidId(pieceId) && isAdmin();
+      }
+    }
+
+    match /reinscriptions/{reinscriptionId} {
+      allow get: if isValidId(reinscriptionId) && (
+        isOwner(existing().doctorantUid) ||
+        hasRole('scolarite') ||
+        isAdmin()
+      );
+
+      allow list: if isVerified() && (
+        existing().doctorantUid == request.auth.uid ||
+        request.auth.token.email in existing().staffViewerEmails
+      );
+
+      allow create: if isVerified() &&
+        isValidId(reinscriptionId) &&
+        isValidReinscription(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        isAdmin();
+
+      allow update: if isVerified() &&
+        isValidId(reinscriptionId) &&
+        isValidReinscription(incoming()) &&
+        incoming().doctorantUid == existing().doctorantUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          isAdmin() ||
+          (
+            hasRole('scolarite') &&
+            existing().status != 'Réinscrit' &&
+            existing().status != 'Rejeté' &&
+            incoming().status in ['Incomplet', 'Complet', 'Réinscrit', 'Rejeté'] &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'delai', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isValidId(reinscriptionId) && isAdmin();
+
+      match /pieces/{pieceId} {
+        allow get: if isValidId(reinscriptionId) && isValidId(pieceId) &&
+          exists(/databases/$(database)/documents/reinscriptions/$(reinscriptionId)) &&
+          (
+            get(/databases/$(database)/documents/reinscriptions/$(reinscriptionId)).data.doctorantUid == request.auth.uid ||
+            hasRole('scolarite') ||
+            isAdmin()
+          );
+
+        allow list: if isVerified() && existing().doctorantUid == request.auth.uid;
+
+        allow create: if isVerified() &&
+          isValidId(reinscriptionId) &&
+          isValidId(pieceId) &&
+          isValidReinscriptionPiece(incoming()) &&
+          incoming().reinscriptionId == reinscriptionId &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/reinscriptions/$(reinscriptionId)) &&
+          (
+            isAdmin() ||
+            (
+              get(/databases/$(database)/documents/reinscriptions/$(reinscriptionId)).data.doctorantUid == request.auth.uid &&
+              get(/databases/$(database)/documents/reinscriptions/$(reinscriptionId)).data.status in ['En dépôt', 'Incomplet'] &&
+              incoming().doctorantUid == request.auth.uid &&
+              incoming().status == 'Reçue' &&
+              incoming().motif == ''
+            )
+          );
+
+        allow update: if isVerified() &&
+          isValidId(reinscriptionId) &&
+          isValidId(pieceId) &&
+          isValidReinscriptionPiece(incoming()) &&
+          incoming().reinscriptionId == existing().reinscriptionId &&
+          incoming().doctorantUid == existing().doctorantUid &&
+          incoming().slot == existing().slot &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          exists(/databases/$(database)/documents/reinscriptions/$(reinscriptionId)) &&
+          (
+            isAdmin() ||
+            (
+              get(/databases/$(database)/documents/reinscriptions/$(reinscriptionId)).data.doctorantUid == request.auth.uid &&
+              get(/databases/$(database)/documents/reinscriptions/$(reinscriptionId)).data.status in ['En dépôt', 'Incomplet'] &&
+              existing().status in ['Manquante', 'Reçue', 'Non conforme'] &&
+              incoming().status == 'Reçue' &&
+              incoming().motif == '' &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['fileName', 'status', 'motif', 'updatedAt'])
+            ) ||
+            (
+              hasRole('scolarite') &&
+              get(/databases/$(database)/documents/reinscriptions/$(reinscriptionId)).data.status != 'Réinscrit' &&
+              incoming().status in ['Conforme', 'Non conforme'] &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'motif', 'updatedAt'])
+            )
+          );
+
+        allow delete: if isValidId(reinscriptionId) && isValidId(pieceId) && isAdmin();
+      }
+    }
+
+    match /admis_publies/{candidatureId} {
+      allow get: if isValidId(candidatureId);
+      allow list: if existing().candidatureId.size() >= 1;
+
+      allow create: if isVerified() &&
+        isValidId(candidatureId) &&
+        isValidPublishedAdmitted(incoming()) &&
+        incoming().candidatureId == candidatureId &&
+        incoming().publishedAt == request.time &&
+        exists(/databases/$(database)/documents/candidatures/$(candidatureId)) &&
+        get(/databases/$(database)/documents/candidatures/$(candidatureId)).data.status in ['Admis', 'Inscrit'] &&
+        get(/databases/$(database)/documents/candidatures/$(candidatureId)).data.cedocValidated == true &&
+        (hasRole('scolarite') || isAdmin());
+
+      allow update: if false;
+      allow delete: if isValidId(candidatureId) && isAdmin();
+    }
+  }
+}

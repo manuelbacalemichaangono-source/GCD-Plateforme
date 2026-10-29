@@ -76,18 +76,18 @@ function countByField(
 }
 
 /**
- * Fonction unique de recherche à facettes en cascade bidirectionnelle :
+ * Fonction unique de recherche à facettes en cascade sélective bidirectionnelle :
  * Étant donné l'ensemble des filtres actifs, retourne :
  * (a) `matchedSubjects` : la liste des sujets publiés correspondants
- * (b) `facetOptions` : pour chaque filtre, les options valides calculées à partir des sujets
- *     publiés respectant TOUS les AUTRES filtres actifs, avec leurs compteurs (> 0 uniquement)
- * ainsi que la pré-sélection automatique lorsqu'une seule option demeure possible.
+ * (b) `facetOptions` : les options valides de chaque filtre calculées uniquement
+ *     à partir des sujets publiés respectant tous les AUTRES filtres actifs, avec compteurs (> 0)
+ * ainsi que la pré-sélection automatique lorsqu'une seule option reste possible.
  */
 export function computeFacetedSubjects(
   allSubjects: ThesisSubject[],
   filters: ActiveFacetFilters
 ): FacetedSearchResult {
-  const published = allSubjects.filter((s) => s.status === "publie");
+  const published = allSubjects.filter((s) => s.status === "Publié");
 
   const matchesExcept = (
     s: ThesisSubject,
@@ -169,10 +169,6 @@ export function computeFacetedSubjects(
   };
 }
 
-/**
- * Retire proprement un filtre actif (qu'il ait été choisi manuellement ou pré-sélectionné
- * automatiquement parce qu'un autre filtre ne laissait qu'une seule option possible).
- */
 export function removeFacetConstraint(
   allSubjects: ThesisSubject[],
   currentFilters: ActiveFacetFilters,
@@ -186,8 +182,6 @@ export function removeFacetConstraint(
     return { ...currentFilters, [targetField]: null };
   }
 
-  // Si l'étiquette cliquée était pré-sélectionnée automatiquement, on retire le filtre
-  // qui contraignait ce champ à une unique option.
   const candidateOrder: (keyof ActiveFacetFilters)[] = [
     "thesisDirector",
     "discipline",

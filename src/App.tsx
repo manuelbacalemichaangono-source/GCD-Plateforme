@@ -3,118 +3,210 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React from "react";
 import {
-  ThesisSubject,
-  SubjectStatus,
-  CandidateApplication,
-  ReenrollmentRecord,
-} from "./types/cedoc";
-import {
-  INITIAL_SUBJECTS,
-  INITIAL_CANDIDATES,
-  INITIAL_REENROLLMENTS,
-} from "./data/cedocData";
-import { CandidateWorkspace } from "./components/CandidateWorkspace";
-import { GovernanceWorkspace } from "./components/GovernanceWorkspace";
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  Link,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
+import { LogOut } from "lucide-react";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import { UserRole, ROLE_ROUTES, ROLE_LABELS } from "./types/cedoc";
+import { PublicAndCandidatSpace } from "./components/PublicAndCandidatSpace";
+import { LoginScreen } from "./components/LoginScreen";
+import { DoctorantScreen } from "./components/DoctorantScreen";
+import { ScolariteScreen } from "./components/ScolariteScreen";
+import { JuryScreen } from "./components/JuryScreen";
+import { DirecteurTheseScreen } from "./components/DirecteurTheseScreen";
+import { DirecteurLaboScreen } from "./components/DirecteurLaboScreen";
+import { DirecteurCedocScreen } from "./components/DirecteurCedocScreen";
 
-export default function App() {
-  const [space, setSpace] = useState<"candidat" | "gestion">("candidat");
+const ProtectedRoute: React.FC<{
+  allowedRole: UserRole;
+  children: React.ReactNode;
+}> = ({ allowedRole, children }) => {
+  const { user, loading } = useAuth();
 
-  const [subjects, setSubjects] = useState<ThesisSubject[]>(INITIAL_SUBJECTS);
-  const [candidates, setCandidates] =
-    useState<CandidateApplication[]>(INITIAL_CANDIDATES);
-  const [reenrollments, setReenrollments] =
-    useState<ReenrollmentRecord[]>(INITIAL_REENROLLMENTS);
-
-  const [presidentSigned, setPresidentSigned] = useState(true);
-  const [cedocDirectorSigned, setCedocDirectorSigned] = useState(false);
-  const [principalQuota, setPrincipalQuota] = useState(2);
-
-  const handleUpdateSubjectStatus = (id: string, status: SubjectStatus) => {
-    setSubjects((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, status } : s))
+  if (loading) {
+    return (
+      <div className="py-12 text-center text-xs text-slate-500">
+        Chargement...
+      </div>
     );
-  };
+  }
 
-  const handleCreateCandidate = (app: CandidateApplication) => {
-    setCandidates((prev) => [app, ...prev]);
-  };
+  if (!user) {
+    return <Navigate to="/connexion" replace />;
+  }
 
-  const handleUpdateCandidate = (updated: CandidateApplication) => {
-    setCandidates((prev) =>
-      prev.map((c) => (c.id === updated.id ? updated : c))
+  if (user.role !== allowedRole) {
+    return <Navigate to={ROLE_ROUTES[user.role]} replace />;
+  }
+
+  return <>{children}</>;
+};
+
+const PublicHomeGate: React.FC = () => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="py-12 text-center text-xs text-slate-500">
+        Chargement...
+      </div>
     );
-  };
+  }
 
-  const handleUpdateReenrollment = (updated: ReenrollmentRecord) => {
-    setReenrollments((prev) =>
-      prev.map((r) => (r.id === updated.id ? updated : r))
-    );
+  if (user) {
+    return <Navigate to={ROLE_ROUTES[user.role]} replace />;
+  }
+
+  return <PublicAndCandidatSpace mode="public" />;
+};
+
+const AppShell: React.FC = () => {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/connexion", { replace: true });
   };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
-      {/* Barre supérieure épurée : uniquement "GCD Platforme" et le basculement entre les 2 espaces demandés */}
-      <header className="bg-white border-b border-slate-200 px-6 py-2.5 flex items-center justify-between gap-8">
-        <span className="font-display text-sm font-bold tracking-tight text-slate-950 whitespace-nowrap shrink-0">
-          GCD Platforme
-        </span>
+      <header className="bg-white border-b border-slate-200 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4">
+        <Link
+          to={user ? ROLE_ROUTES[user.role] : "/"}
+          className="font-display text-sm font-bold tracking-tight text-slate-950 whitespace-nowrap"
+        >
+          GCD Platform
+        </Link>
 
-        <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-md shrink-0">
-          <button
-            onClick={() => setSpace("candidat")}
-            className={`px-3 py-1 text-xs font-semibold rounded transition-colors whitespace-nowrap ${
-              space === "candidat"
-                ? "bg-white text-slate-950 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Espace Candidat / Doctorant
-          </button>
-          <button
-            onClick={() => setSpace("gestion")}
-            className={`px-3 py-1 text-xs font-semibold rounded transition-colors whitespace-nowrap ${
-              space === "gestion"
-                ? "bg-white text-slate-950 shadow-xs"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Espace Gestionnaires & Présidents
-          </button>
+        <div className="flex items-center gap-3 text-xs">
+          {user ? (
+            <>
+              <span className="text-slate-600 hidden sm:inline">
+                {user.fullName} · {ROLE_LABELS[user.role]}
+              </span>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-900 font-semibold rounded transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Déconnexion</span>
+              </button>
+            </>
+          ) : location.pathname === "/connexion" ? (
+            <Link
+              to="/"
+              className="px-3 py-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-900 font-semibold rounded"
+            >
+              Recherche de sujets
+            </Link>
+          ) : (
+            <Link
+              to="/connexion"
+              className="px-3.5 py-1.5 bg-slate-900 text-white hover:bg-slate-800 font-semibold rounded"
+            >
+              Se connecter
+            </Link>
+          )}
         </div>
       </header>
 
-      <main className="flex-1 max-w-[1360px] w-full mx-auto px-4 sm:px-6 py-4">
-        {space === "candidat" ? (
-          <CandidateWorkspace
-            subjects={subjects}
-            candidates={candidates}
-            onCreateApplication={handleCreateCandidate}
-            onUpdateApplication={handleUpdateCandidate}
-            reenrollments={reenrollments}
-            onUpdateReenrollment={handleUpdateReenrollment}
-            officialResultsPublished={presidentSigned && cedocDirectorSigned}
-            principalQuota={principalQuota}
+      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-5">
+        <Routes>
+          <Route path="/" element={<PublicHomeGate />} />
+          <Route path="/connexion" element={<LoginScreen />} />
+
+          <Route
+            path="/candidat"
+            element={
+              <ProtectedRoute allowedRole="candidat">
+                <PublicAndCandidatSpace mode="candidat" />
+              </ProtectedRoute>
+            }
           />
-        ) : (
-          <GovernanceWorkspace
-            subjects={subjects}
-            onUpdateSubjectStatus={handleUpdateSubjectStatus}
-            candidates={candidates}
-            onUpdateCandidate={handleUpdateCandidate}
-            onCreateCandidate={handleCreateCandidate}
-            reenrollments={reenrollments}
-            onUpdateReenrollment={handleUpdateReenrollment}
-            presidentSigned={presidentSigned}
-            setPresidentSigned={setPresidentSigned}
-            cedocDirectorSigned={cedocDirectorSigned}
-            setCedocDirectorSigned={setCedocDirectorSigned}
-            principalQuota={principalQuota}
-            setPrincipalQuota={setPrincipalQuota}
+
+          <Route
+            path="/doctorant"
+            element={
+              <ProtectedRoute allowedRole="doctorant">
+                <DoctorantScreen />
+              </ProtectedRoute>
+            }
           />
-        )}
+
+          <Route
+            path="/scolarite"
+            element={
+              <ProtectedRoute allowedRole="scolarite">
+                <ScolariteScreen />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/jury"
+            element={
+              <ProtectedRoute allowedRole="jury">
+                <JuryScreen />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/directeur-these"
+            element={
+              <ProtectedRoute allowedRole="directeur_these">
+                <DirecteurTheseScreen />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/directeur-laboratoire"
+            element={
+              <ProtectedRoute allowedRole="directeur_labo">
+                <DirecteurLaboScreen />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/directeur-cedoc"
+            element={
+              <ProtectedRoute allowedRole="directeur_cedoc">
+                <DirecteurCedocScreen />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="*"
+            element={
+              <Navigate to={user ? ROLE_ROUTES[user.role] : "/"} replace />
+            }
+          />
+        </Routes>
       </main>
     </div>
+  );
+};
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <AppShell />
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
