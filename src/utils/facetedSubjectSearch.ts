@@ -1,5 +1,11 @@
 import { ThesisSubject } from "../types/cedoc";
 
+export type FacetField =
+  | "laboratory"
+  | "discipline"
+  | "thesisDirector"
+  | "language";
+
 export interface ActiveFacetFilters {
   keywords: string;
   laboratory: string | null;
@@ -15,30 +21,41 @@ export interface FacetOptionCount {
 
 export interface FacetedSearchResult {
   matchedSubjects: ThesisSubject[];
-  facetOptions: {
-    laboratory: FacetOptionCount[];
-    discipline: FacetOptionCount[];
-    thesisDirector: FacetOptionCount[];
-    language: FacetOptionCount[];
-  };
+  facetOptions: Record<FacetField, FacetOptionCount[]>;
+  effectiveFilters: ActiveFacetFilters;
+  autoPreselected: Record<FacetField, boolean>;
+}
+
+const FACET_FIELDS: FacetField[] = [
+  "laboratory",
+  "discipline",
+  "thesisDirector",
+  "language",
+];
+
+function normalizeText(input: string): string {
+  return input
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 }
 
 function matchesKeywords(subject: ThesisSubject, rawQuery: string): boolean {
-  const q = rawQuery.trim().toLowerCase();
+  const q = normalizeText(rawQuery.trim());
   if (!q) return true;
   const terms = q.split(/\s+/).filter(Boolean);
-  const searchable = [
-    subject.code,
-    subject.title,
-    subject.laboratory,
-    subject.discipline,
-    subject.thesisDirector,
-    subject.language,
-    subject.prerequisites,
-    ...subject.keywords,
-  ]
-    .join(" ")
-    .toLowerCase();
+  const searchable = normalizeText(
+    [
+      subject.code,
+      subject.title,
+      subject.laboratory,
+      subject.discipline,
+      subject.thesisDirector,
+      subject.language,
+      subject.prerequisites,
+      ...subject.keywords,
+    ].join(" ")
+  );
 
   return terms.every((term) => searchable.includes(term));
 }
@@ -59,11 +76,12 @@ function countByField(
 }
 
 /**
- * Fonction unique de recherche à facettes bidirectionnelles :
- * À partir de l'ensemble des sujets et des filtres actifs, retourne :
- * (a) la liste des sujets publiés correspondants (`matchedSubjects`)
- * (b) les options valides de chaque filtre calculées sur les sujets respectant
- *     TOUS les AUTRES filtres actifs (zéro option à 0 résultat), avec compteurs.
+ * Fonction unique de recherche à facettes en cascade bidirectionnelle :
+ * Étant donné l'ensemble des filtres actifs, retourne :
+ * (a) `matchedSubjects` : la liste des sujets publiés correspondants
+ * (b) `facetOptions` : pour chaque filtre, les options valides calculées à partir des sujets
+ *     publiés respectant TOUS les AUTRES filtres actifs, avec leurs compteurs (> 0 uniquement)
+ * ainsi que la pré-sélection automatique lorsqu'une seule option demeure possible.
  */
 export function computeFacetedSubjects(
   allSubjects: ThesisSubject[],
@@ -73,7 +91,7 @@ export function computeFacetedSubjects(
 
   const matchesExcept = (
     s: ThesisSubject,
-    ignoreField?: "laboratory" | "discipline" | "thesisDirector" | "language"
+    ignoreField?: FacetField
   ): boolean => {
     if (!matchesKeywords(s, filters.keywords)) return false;
     if (
@@ -109,20 +127,98 @@ export function computeFacetedSubjects(
 
   const matchedSubjects = published.filter((s) => matchesExcept(s));
 
-  const forLaboratory = published.filter((s) => matchesExcept(s, "laboratory"));
-  const forDiscipline = published.filter((s) => matchesExcept(s, "discipline"));
-  const forDirector = published.filter((s) =>
-    matchesExcept(s, "thesisDirector")
-  );
-  const forLanguage = published.filter((s) => matchesExcept(s, "language"));
+  const facetOptions: Record<FacetField, FacetOptionCount[]> = {
+    laboratory: countByField(
+      published.filter((s) => matchesExcept(s, "laboratory")),
+      (s) => s.laboratory
+    ),
+    discipline: countByField(
+      published.filter((s) => matchesExcept(s, "discipline")),
+      (s) => s.discipline
+    ),
+    thesisDirector: countByField(
+      published.filter((s) => matchesExcept(s, "thesisDirector")),
+      (s) => s.thesisDirector
+    ),
+    language: countByField(
+      published.filter((s) => matchesExcept(s, "language")),
+      (s) => s.language
+    ),
+  };
+
+  const effectiveFilters: ActiveFacetFilters = { ...filters };
+  const autoPreselected: Record<FacetField, boolean> = {
+    laboratory: false,
+    discipline: false,
+    thesisDirector: false,
+    language: false,
+  };
+
+  for (const field of FACET_FIELDS) {
+    if (filters[field] === null && facetOptions[field].length === 1) {
+      effectiveFilters[field] = facetOptions[field][0].value;
+      autoPreselected[field] = true;
+    }
+  }
 
   return {
     matchedSubjects,
-    facetOptions: {
-      laboratory: countByField(forLaboratory, (s) => s.laboratory),
-      discipline: countByField(forDiscipline, (s) => s.discipline),
-      thesisDirector: countByField(forDirector, (s) => s.thesisDirector),
-      language: countByField(forLanguage, (s) => s.language),
-    },
+    facetOptions,
+    effectiveFilters,
+    autoPreselected,
+  };
+}
+
+/**
+ * Retire proprement un filtre actif (qu'il ait été choisi manuellement ou pré-sélectionné
+ * automatiquement parce qu'un autre filtre ne laissait qu'une seule option possible).
+ */
+export function removeFacetConstraint(
+  allSubjects: ThesisSubject[],
+  currentFilters: ActiveFacetFilters,
+  targetField: keyof ActiveFacetFilters
+): ActiveFacetFilters {
+  if (targetField === "keywords") {
+    return { ...currentFilters, keywords: "" };
+  }
+
+  if (currentFilters[targetField] !== null) {
+    return { ...currentFilters, [targetField]: null };
+  }
+
+  // Si l'étiquette cliquée était pré-sélectionnée automatiquement, on retire le filtre
+  // qui contraignait ce champ à une unique option.
+  const candidateOrder: (keyof ActiveFacetFilters)[] = [
+    "thesisDirector",
+    "discipline",
+    "laboratory",
+    "language",
+    "keywords",
+  ];
+
+  for (const key of candidateOrder) {
+    if (key === targetField) continue;
+    const isActive =
+      key === "keywords"
+        ? Boolean(currentFilters.keywords.trim())
+        : currentFilters[key] !== null;
+    if (!isActive) continue;
+
+    const relaxed: ActiveFacetFilters = {
+      ...currentFilters,
+      [key]: key === "keywords" ? "" : null,
+    };
+    const probe = computeFacetedSubjects(allSubjects, relaxed);
+    if (probe.facetOptions[targetField].length !== 1) {
+      return relaxed;
+    }
+  }
+
+  return {
+    keywords: "",
+    laboratory: null,
+    discipline: null,
+    thesisDirector: null,
+    language: null,
   };
 }

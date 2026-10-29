@@ -9,7 +9,10 @@ import {
 import { ALL_DOC_SLOTS, DOC_SLOT_LABELS } from "../data/cedocData";
 import {
   ActiveFacetFilters,
+  FacetField,
+  FacetOptionCount,
   computeFacetedSubjects,
+  removeFacetConstraint,
 } from "../utils/facetedSubjectSearch";
 import { X, RotateCcw } from "lucide-react";
 
@@ -23,8 +26,6 @@ interface CandidateWorkspaceProps {
   officialResultsPublished: boolean;
   principalQuota: number;
 }
-
-type FacetField = "laboratory" | "discipline" | "thesisDirector" | "language";
 
 const EMPTY_FACETS: ActiveFacetFilters = {
   keywords: "",
@@ -48,87 +49,33 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
     "recherche_sujets" | "candidature" | "resultats_recours" | "reinscription"
   >("recherche_sujets");
 
-  // 1. État des filtres explicites choisis par le visiteur (sans compte)
+  // 1. Visiteur sans compte : Recherche de sujets à facettes en cascade bidireccional
   const [userFacets, setUserFacets] = useState<ActiveFacetFilters>(EMPTY_FACETS);
   const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [detailModalSubject, setDetailModalSubject] =
+    useState<ThesisSubject | null>(null);
 
-  // Calcul des pré-sélections automatiques lorsqu'il ne reste qu'une seule option possible (> 0 résultat)
-  const { effectiveFilters, autoLockedFields, searchOutput } = useMemo(() => {
-    const current: ActiveFacetFilters = { ...userFacets };
-    const autoLocked = new Set<FacetField>();
+  // Unique fonction retournant (a) les sujets publiés correspondants et
+  // (b) les options valides de chaque filtre avec compteurs (> 0) + pré-sélection auto
+  const searchOutput = useMemo(
+    () => computeFacetedSubjects(subjects, userFacets),
+    [subjects, userFacets]
+  );
 
-    const hasAnyUserConstraint = Boolean(
-      userFacets.keywords.trim() ||
-        userFacets.laboratory ||
-        userFacets.discipline ||
-        userFacets.thesisDirector ||
-        userFacets.language
-    );
+  const { effectiveFilters, autoPreselected } = searchOutput;
 
-    if (hasAnyUserConstraint) {
-      let stabilized = false;
-      while (!stabilized) {
-        stabilized = true;
-        const probe = computeFacetedSubjects(subjects, current);
-        const fields: FacetField[] = [
-          "laboratory",
-          "discipline",
-          "thesisDirector",
-          "language",
-        ];
-        for (const f of fields) {
-          if (current[f] === null && probe.facetOptions[f].length === 1) {
-            current[f] = probe.facetOptions[f][0].value;
-            autoLocked.add(f);
-            stabilized = false;
-          }
-        }
-      }
-    }
-
-    const finalOutput = computeFacetedSubjects(subjects, current);
-    return {
-      effectiveFilters: current,
-      autoLockedFields: autoLocked,
-      searchOutput: finalOutput,
-    };
-  }, [subjects, userFacets]);
-
-  const handleUpdateFacet = (field: keyof ActiveFacetFilters, val: string | null) => {
-    setUserFacets((prev) => {
-      const next: ActiveFacetFilters = {
-        ...prev,
-        [field]: val === "" ? null : val,
-      };
-      // Vérifie que les autres filtres précédemment sélectionnés restent compatibles ; sinon libère ceux devenus impossibles
-      const check = computeFacetedSubjects(subjects, next);
-      if (check.matchedSubjects.length === 0 && field !== "keywords" && val !== null) {
-        const otherFields: FacetField[] = [
-          "laboratory",
-          "discipline",
-          "thesisDirector",
-          "language",
-        ];
-        for (const f of otherFields) {
-          if (f !== field) next[f] = null;
-        }
-      }
-      return next;
-    });
+  const handleUpdateFacet = (
+    field: keyof ActiveFacetFilters,
+    val: string | null
+  ) => {
+    setUserFacets((prev) => ({
+      ...prev,
+      [field]: field === "keywords" ? val ?? "" : val === "" ? null : val,
+    }));
   };
 
   const handleRemoveSingleFilter = (field: keyof ActiveFacetFilters) => {
-    setUserFacets((prev) => {
-      // Si l'utilisateur retire une facette auto-présélectionnée ou liée, on retire sa contrainte source ou la facette elle-même
-      if (field === "keywords") {
-        return { ...prev, keywords: "" };
-      }
-      if (prev[field] !== null) {
-        return { ...prev, [field]: null };
-      }
-      // Si cette facette était auto-déduite d'une autre facette unique, réinitialiser les facettes dépendantes
-      return EMPTY_FACETS;
-    });
+    setUserFacets((prev) => removeFacetConstraint(subjects, prev, field));
   };
 
   const handleResetAllFilters = () => {
@@ -141,7 +88,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
         return prev.filter((x) => x !== id);
       }
       if (prev.length >= 3) {
-        return prev; // Limité de 2 à 3 sujets simultanés
+        return prev;
       }
       return [...prev, id];
     });
@@ -151,11 +98,12 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
     (s) => s.status === "publie" && compareIds.includes(s.id)
   );
 
-  // 2. Candidature (Création du compte uniquement au moment de postuler)
+  // 2. Candidature (Création de compte uniquement au clic sur Candidater)
   const [chosenSubject, setChosenSubject] = useState<ThesisSubject | null>(null);
   const [candName, setCandName] = useState("");
   const [candCin, setCandCin] = useState("");
   const [candEmail, setCandEmail] = useState("");
+  const [candPhone, setCandPhone] = useState("");
   const [candCne, setCandCne] = useState("N138492011");
   const [originMode, setOriginMode] = useState<
     "INTERNE_USMBA" | "API_EXTERNE" | "DEPOT_MANUEL" | "DEPOT_PHYSIQUE"
@@ -188,6 +136,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
 
   const handleSelectSubjectForApplication = (subject: ThesisSubject) => {
     setChosenSubject(subject);
+    setDetailModalSubject(null);
     setSubmittedDossier(null);
     setSubView("candidature");
   };
@@ -308,6 +257,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
       cin: candCin.toUpperCase(),
       studentIdCne: candCne.toUpperCase(),
       email: candEmail,
+      phone: candPhone || "Non renseigné",
       subjectCode: chosenSubject.code,
       channel: originMode === "DEPOT_PHYSIQUE" ? "Dépôt physique" : "En ligne",
       receiptNumber:
@@ -316,19 +266,22 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
           : undefined,
       pieces,
       deadline: "2026-11-08",
+      relanceCount: 0,
       adminStatus: isComplete ? "complet_forme" : "en_cours",
+      juryGrades: [],
       dossierScore: 0,
       projectScore: 0,
       interviewScore: 0,
       juryLocked: false,
       attendanceStatus: "en_attente",
+      confirmationDeadline: "2026-11-12",
     };
 
     onCreateApplication(newApp);
     setSubmittedDossier(newApp);
   };
 
-  // Liste des filtres actifs à afficher sous forme d'étiquettes amovibles avec "x"
+  // Étiquettes actives avec croix "x" individuelle
   const activeFilterTags: {
     key: keyof ActiveFacetFilters;
     label: string;
@@ -349,7 +302,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
       key: "laboratory",
       label: "Laboratoire",
       value: effectiveFilters.laboratory,
-      isAuto: autoLockedFields.has("laboratory"),
+      isAuto: autoPreselected.laboratory,
     });
   }
   if (effectiveFilters.discipline) {
@@ -357,7 +310,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
       key: "discipline",
       label: "Discipline",
       value: effectiveFilters.discipline,
-      isAuto: autoLockedFields.has("discipline"),
+      isAuto: autoPreselected.discipline,
     });
   }
   if (effectiveFilters.thesisDirector) {
@@ -365,7 +318,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
       key: "thesisDirector",
       label: "Directeur",
       value: effectiveFilters.thesisDirector,
-      isAuto: autoLockedFields.has("thesisDirector"),
+      isAuto: autoPreselected.thesisDirector,
     });
   }
   if (effectiveFilters.language) {
@@ -373,11 +326,60 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
       key: "language",
       label: "Langue",
       value: effectiveFilters.language,
-      isAuto: autoLockedFields.has("language"),
+      isAuto: autoPreselected.language,
     });
   }
 
-  // Classement pour l'affichage des admis
+  const renderFacetSelect = (
+    field: FacetField,
+    label: string,
+    allPlaceholder: string
+  ) => {
+    const options: FacetOptionCount[] = searchOutput.facetOptions[field];
+    const totalAvailable = options.reduce((acc, o) => acc + o.count, 0);
+    const selectedVal = effectiveFilters[field] || "";
+    const manualVal = userFacets[field];
+    const isDisabled = options.length === 0 && !manualVal;
+
+    return (
+      <div>
+        <label className="block text-[11px] font-medium text-slate-600 mb-1">
+          {label}
+        </label>
+        <select
+          value={selectedVal}
+          disabled={isDisabled}
+          onChange={(e) => handleUpdateFacet(field, e.target.value || null)}
+          className="w-full px-2.5 py-1.5 border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:border-slate-900 disabled:bg-slate-50 disabled:text-slate-400"
+        >
+          {options.length === 0 ? (
+            manualVal ? (
+              <>
+                <option value="">Retirer ce filtre</option>
+                <option value={manualVal}>{manualVal}</option>
+              </>
+            ) : (
+              <option value="">Aucune option disponible</option>
+            )
+          ) : (
+            <>
+              {options.length > 1 && (
+                <option value="">
+                  {allPlaceholder} ({totalAvailable})
+                </option>
+              )}
+              {options.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.value} ({opt.count})
+                </option>
+              ))}
+            </>
+          )}
+        </select>
+      </div>
+    );
+  };
+
   const rankedSubjectApps = [...candidates]
     .filter((c) => c.subjectCode === "CEDOC-IA-01" && c.adminStatus !== "non_admis")
     .sort(
@@ -446,10 +448,9 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
         </button>
       </div>
 
-      {/* VUE 1 : VISITEUR (SANS COMPTE) — RECHERCHE DE SUJETS EN CASCADE BIDIRECTIONNELLE INSTANTANÉE */}
+      {/* 1. VISITEUR (SANS COMPTE) : RECHERCHE DE SUJETS EN CASCADE BIDIRECTIONNELLE */}
       {subView === "recherche_sujets" && (
         <div className="space-y-4">
-          {/* Barre de filtres en cascade bidirectionnelle (sans bouton Rechercher) */}
           <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2.5 text-xs">
               <div>
@@ -465,104 +466,29 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                  Laboratoire
-                </label>
-                <select
-                  value={effectiveFilters.laboratory || ""}
-                  onChange={(e) =>
-                    handleUpdateFacet("laboratory", e.target.value || null)
-                  }
-                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:border-slate-900"
-                >
-                  {searchOutput.facetOptions.laboratory.length !== 1 && (
-                    <option value="">
-                      Tous les laboratoires ({searchOutput.matchedSubjects.length})
-                    </option>
-                  )}
-                  {searchOutput.facetOptions.laboratory.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.value} ({opt.count})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                  Discipline / Thématique
-                </label>
-                <select
-                  value={effectiveFilters.discipline || ""}
-                  onChange={(e) =>
-                    handleUpdateFacet("discipline", e.target.value || null)
-                  }
-                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:border-slate-900"
-                >
-                  {searchOutput.facetOptions.discipline.length !== 1 && (
-                    <option value="">
-                      Toutes les disciplines ({searchOutput.matchedSubjects.length})
-                    </option>
-                  )}
-                  {searchOutput.facetOptions.discipline.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.value} ({opt.count})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                  Directeur de thèse
-                </label>
-                <select
-                  value={effectiveFilters.thesisDirector || ""}
-                  onChange={(e) =>
-                    handleUpdateFacet("thesisDirector", e.target.value || null)
-                  }
-                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:border-slate-900"
-                >
-                  {searchOutput.facetOptions.thesisDirector.length !== 1 && (
-                    <option value="">
-                      Tous les directeurs ({searchOutput.matchedSubjects.length})
-                    </option>
-                  )}
-                  {searchOutput.facetOptions.thesisDirector.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.value} ({opt.count})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-medium text-slate-600 mb-1">
-                  Langue
-                </label>
-                <select
-                  value={effectiveFilters.language || ""}
-                  onChange={(e) =>
-                    handleUpdateFacet("language", e.target.value || null)
-                  }
-                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded bg-white text-slate-900 focus:outline-none focus:border-slate-900"
-                >
-                  {searchOutput.facetOptions.language.length !== 1 && (
-                    <option value="">
-                      Toutes les langues ({searchOutput.matchedSubjects.length})
-                    </option>
-                  )}
-                  {searchOutput.facetOptions.language.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.value} ({opt.count})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {renderFacetSelect(
+                "laboratory",
+                "Laboratoire",
+                "Tous les laboratoires"
+              )}
+              {renderFacetSelect(
+                "discipline",
+                "Discipline / Thématique",
+                "Toutes les disciplines"
+              )}
+              {renderFacetSelect(
+                "thesisDirector",
+                "Directeur de thèse",
+                "Tous les directeurs"
+              )}
+              {renderFacetSelect(
+                "language",
+                "Langue",
+                "Toutes les langues"
+              )}
             </div>
 
-            {/* Étiquettes de filtres actifs avec bouton "x" individuel + bouton "Réinitialiser les filtres" */}
+            {/* Étiquettes de filtres actifs avec "x" + bouton Réinitialiser les filtres */}
             <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="font-semibold text-slate-800 tabular-nums mr-1">
@@ -580,7 +506,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded text-xs transition-colors"
                   >
                     <span className="text-slate-500">{tag.label} :</span>
-                    <span className="font-medium truncate max-w-[200px]">
+                    <span className="font-medium truncate max-w-[210px]">
                       {tag.value}
                     </span>
                     <X className="w-3 h-3 text-slate-500 shrink-0" />
@@ -601,7 +527,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
             </div>
           </div>
 
-          {/* Vue comparative côte à côte lorsque 2 à 3 sujets sont cochés */}
+          {/* Comparaison côte à côte (2 à 3 sujets) */}
           {comparedSubjects.length >= 2 && (
             <div className="bg-white border border-slate-900 rounded-lg overflow-hidden">
               <div className="px-4 py-2.5 bg-slate-900 text-white flex items-center justify-between text-xs">
@@ -613,7 +539,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                   onClick={() => setCompareIds([])}
                   className="text-slate-300 hover:text-white inline-flex items-center gap-1"
                 >
-                  <X className="w-3.5 h-3.5" /> Fermer la comparaison
+                  <X className="w-3.5 h-3.5" /> Fermer
                 </button>
               </div>
               <div className="overflow-x-auto">
@@ -634,7 +560,6 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                               type="button"
                               onClick={() => toggleCompareSubject(s.id)}
                               className="text-slate-400 hover:text-slate-800 shrink-0"
-                              title="Retirer de la comparaison"
                             >
                               <X className="w-3.5 h-3.5" />
                             </button>
@@ -719,7 +644,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
           {compareIds.length === 1 && (
             <div className="px-3.5 py-2 bg-slate-100 border border-slate-200 rounded text-xs text-slate-700 flex items-center justify-between">
               <span>
-                1 sujet sélectionné pour comparaison — cochez un 2e ou 3e sujet pour afficher le comparatif côte à côte.
+                1 sujet coché — sélectionnez un 2e ou 3e sujet pour les comparer côte à côte.
               </span>
               <button
                 type="button"
@@ -731,15 +656,36 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
             </div>
           )}
 
-          {/* Résultats sous forme de cartes denses ou message clair d'absence de résultat */}
+          {/* Cartes des sujets ou message clair d'absence de résultat */}
           {searchOutput.matchedSubjects.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-lg p-8 text-center space-y-2.5 text-xs">
+            <div className="bg-white border border-slate-200 rounded-lg p-8 text-center space-y-3 text-xs">
               <div className="font-semibold text-slate-900 text-sm">
-                Aucun sujet publié ne correspond à votre recherche actuelle.
+                Aucun sujet publié ne correspond à vos critères actuels
+                {userFacets.keywords.trim()
+                  ? ` (« ${userFacets.keywords.trim()} »)`
+                  : ""}
+                .
               </div>
               <p className="text-slate-600 max-w-md mx-auto">
-                Essayez de modifier vos mots-clés ou retirez l'un des filtres actifs ci-dessus pour élargir les sujets disponibles.
+                Suggestion : retirez un filtre ci-dessous ou élargissez vos mots-clés pour afficher les sujets correspondants.
               </p>
+              {activeFilterTags.length > 0 && (
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                  {activeFilterTags.map((tag) => (
+                    <button
+                      key={tag.key}
+                      type="button"
+                      onClick={() => handleRemoveSingleFilter(tag.key)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-800 rounded font-medium"
+                    >
+                      <span>
+                        Retirer {tag.label.toLowerCase()} : {tag.value}
+                      </span>
+                      <X className="w-3.5 h-3.5 text-slate-500" />
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="pt-1">
                 <button
                   type="button"
@@ -767,39 +713,47 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                     }`}
                   >
                     <div className="space-y-2">
-                      {/* Métadonnées sobres non-encapsulées : discipline · langue */}
-                      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
                         <span className="font-mono text-slate-700">{s.code}</span>
-                        <span aria-hidden="true">·</span>
-                        <span className="font-medium text-slate-700">
-                          {s.discipline}
-                        </span>
-                        <span aria-hidden="true">·</span>
-                        <span>{s.language}</span>
+                        <button
+                          type="button"
+                          onClick={() => setDetailModalSubject(s)}
+                          className="text-slate-600 hover:text-slate-950 underline"
+                        >
+                          Détails
+                        </button>
                       </div>
 
                       <h3 className="text-sm font-bold text-slate-900 leading-snug">
-                        {s.title}
+                        <button
+                          type="button"
+                          onClick={() => setDetailModalSubject(s)}
+                          className="text-left hover:underline"
+                        >
+                          {s.title}
+                        </button>
                       </h3>
 
-                      <div className="space-y-0.5 text-xs text-slate-600 pt-0.5">
-                        <div>
-                          <span className="text-slate-500">Laboratoire : </span>
-                          <span className="text-slate-800 font-medium">
-                            {s.laboratory}
-                          </span>
+                      <dl className="space-y-1 text-xs text-slate-600 pt-0.5">
+                        <div className="flex gap-1.5">
+                          <dt className="text-slate-500 shrink-0">Laboratoire :</dt>
+                          <dd className="text-slate-800 font-medium">{s.laboratory}</dd>
                         </div>
-                        <div>
-                          <span className="text-slate-500">Directeur : </span>
-                          <span className="text-slate-900 font-semibold">
+                        <div className="flex gap-1.5">
+                          <dt className="text-slate-500 shrink-0">Directeur :</dt>
+                          <dd className="text-slate-900 font-semibold">
                             {s.thesisDirector}
-                          </span>
+                          </dd>
                         </div>
-                      </div>
-
-                      <p className="text-[11px] text-slate-500 leading-relaxed pt-1 border-t border-slate-100">
-                        {s.prerequisites}
-                      </p>
+                        <div className="flex gap-1.5">
+                          <dt className="text-slate-500 shrink-0">Discipline :</dt>
+                          <dd className="text-slate-800">{s.discipline}</dd>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <dt className="text-slate-500 shrink-0">Langue :</dt>
+                          <dd className="text-slate-800">{s.language}</dd>
+                        </div>
+                      </dl>
                     </div>
 
                     <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2 text-xs">
@@ -809,11 +763,6 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                             ? "opacity-40 cursor-not-allowed"
                             : "cursor-pointer text-slate-700 hover:text-slate-950"
                         }`}
-                        title={
-                          disableCompareCheckbox
-                            ? "Maximum 3 sujets comparables simultanément"
-                            : "Sélectionner pour comparer (2 à 3 sujets)"
-                        }
                       >
                         <input
                           type="checkbox"
@@ -838,39 +787,99 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
               })}
             </div>
           )}
+
+          {/* Consultation détaillée sans compte */}
+          {detailModalSubject && (
+            <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
+              <div className="bg-white border border-slate-200 rounded-lg max-w-lg w-full p-5 space-y-3 text-xs">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-mono text-[11px] text-slate-500">
+                      {detailModalSubject.code} · {detailModalSubject.discipline} ·{" "}
+                      {detailModalSubject.language}
+                    </div>
+                    <h3 className="text-sm font-bold text-slate-900 mt-1">
+                      {detailModalSubject.title}
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDetailModalSubject(null)}
+                    className="text-slate-400 hover:text-slate-800"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="space-y-1 text-slate-700">
+                  <div>
+                    <strong>Laboratoire :</strong> {detailModalSubject.laboratory}
+                  </div>
+                  <div>
+                    <strong>Directeur de thèse :</strong>{" "}
+                    {detailModalSubject.thesisDirector}
+                  </div>
+                  <div>
+                    <strong>Prérequis :</strong> {detailModalSubject.prerequisites}
+                  </div>
+                  <div>
+                    <strong>Mots-clés :</strong>{" "}
+                    {detailModalSubject.keywords.join(" · ")}
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setDetailModalSubject(null)}
+                    className="px-3 py-1.5 text-slate-600 hover:text-slate-900"
+                  >
+                    Fermer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleSelectSubjectForApplication(detailModalSubject)
+                    }
+                    className="px-3.5 py-1.5 font-semibold bg-slate-900 text-white rounded hover:bg-slate-800"
+                  >
+                    Candidater
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* VUE 2 : CANDIDATURE (CRÉATION DU COMPTE AU DÉPÔT + RÉCUPÉRATION ID/API + DÉPÔT PHYSIQUE) */}
+      {/* 2. DÉPÔT DE CANDIDATURE (CRÉATION DU COMPTE AU DÉPÔT + BASE INTERNE / API + DÉPÔT PHYSIQUE) */}
       {subView === "candidature" && (
         <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-5 text-xs">
           {!chosenSubject ? (
             <div className="py-6 text-center text-slate-500 space-y-2">
               <p>
-                Choisissez un sujet dans « Recherche de sujets » et cliquez sur « Candidater » pour créer votre compte uniquement au moment du dépôt.
+                Consultez librement les sujets sans compte, puis cliquez sur « Candidater » sur le sujet choisi pour créer votre dossier.
               </p>
               <button
                 onClick={() => setSubView("recherche_sujets")}
                 className="px-3 py-1.5 font-semibold bg-slate-900 text-white rounded"
               >
-                Voir les sujets
+                Retour à la recherche de sujets
               </button>
             </div>
           ) : submittedDossier ? (
             <div className="p-4 bg-slate-50 border border-slate-200 rounded space-y-2">
               <div className="font-bold text-slate-900 text-sm">
-                Candidature enregistrée — Dossier {submittedDossier.dossierCode}
+                Compte créé & Candidature enregistrée — {submittedDossier.dossierCode}
               </div>
               <div className="text-slate-700">
                 Sujet : <strong>{submittedDossier.subjectCode}</strong> · Candidat :{" "}
                 <strong>{submittedDossier.fullName}</strong> · Canal :{" "}
                 {submittedDossier.channel}
                 {submittedDossier.receiptNumber
-                  ? ` (Récépissé ${submittedDossier.receiptNumber})`
+                  ? ` (Accusé ${submittedDossier.receiptNumber})`
                   : ""}
               </div>
               <div className="text-slate-600">
-                Pièces versées aux espaces de dépôt :{" "}
+                Pièces présentes dans les espaces de dépôt :{" "}
                 {submittedDossier.pieces.length} / {ALL_DOC_SLOTS.length}.
               </div>
             </div>
@@ -878,7 +887,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
             <form onSubmit={handleSubmitApplication} className="space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200">
                 <div>
-                  <span className="text-slate-500">Sujet retenu : </span>
+                  <span className="text-slate-500">Sujet sélectionné : </span>
                   <strong className="text-slate-900">
                     {chosenSubject.code} — {chosenSubject.title}
                   </strong>{" "}
@@ -893,7 +902,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-2.5">
                 <div>
                   <label className="block font-medium text-slate-700 mb-1">
                     Nom et Prénom
@@ -920,7 +929,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                 </div>
                 <div>
                   <label className="block font-medium text-slate-700 mb-1">
-                    Identifiant Étudiant (CNE / ID)
+                    Identifiant (CNE / ID)
                   </label>
                   <input
                     type="text"
@@ -932,22 +941,33 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                 </div>
                 <div>
                   <label className="block font-medium text-slate-700 mb-1">
-                    E-mail ou Contact
+                    E-mail
                   </label>
                   <input
                     type="text"
                     required
                     value={candEmail}
                     onChange={(e) => setCandEmail(e.target.value)}
-                    placeholder="email@domaine.ma ou Téléphone"
                     className="w-full px-2.5 py-1.5 border border-slate-300 rounded"
+                  />
+                </div>
+                <div>
+                  <label className="block font-medium text-slate-700 mb-1">
+                    Téléphone (SMS)
+                  </label>
+                  <input
+                    type="text"
+                    value={candPhone}
+                    onChange={(e) => setCandPhone(e.target.value)}
+                    placeholder="06..."
+                    className="w-full px-2.5 py-1.5 font-mono border border-slate-300 rounded"
                   />
                 </div>
               </div>
 
               <div className="p-3.5 bg-slate-50 border border-slate-200 rounded space-y-3">
                 <div className="font-semibold text-slate-900">
-                  Mode de fourniture des diplômes et relevés
+                  Récupération des pièces académiques
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -970,7 +990,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                         : "bg-white text-slate-700 border-slate-300"
                     }`}
                   >
-                    Autre université (Récupération via API)
+                    Autre université (API avec consentement)
                   </button>
                   <button
                     type="button"
@@ -981,7 +1001,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                         : "bg-white text-slate-700 border-slate-300"
                     }`}
                   >
-                    Repli : Dépôt manuel complet
+                    Repli : Dépôt manuel
                   </button>
                   <button
                     type="button"
@@ -992,67 +1012,65 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                         : "bg-white text-slate-700 border-slate-300"
                     }`}
                   >
-                    Sans équipement / Dépôt physique au secrétariat
+                    Dépôt physique au secrétariat
                   </button>
                 </div>
 
                 {originMode === "INTERNE_USMBA" && (
                   <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                     <span className="text-slate-600">
-                      Récupération directe depuis la base interne de l'université (aucun redépôt des relevés ou diplômes déjà détenus).
+                      Récupération automatique des diplômes et relevés détenus par l'établissement.
                     </span>
                     <button
                       type="button"
                       onClick={handleRetrieveAcademicDocs}
                       className="px-3 py-1.5 bg-slate-900 text-white font-semibold rounded"
                     >
-                      Récupérer via Base Interne
+                      Synchroniser la base interne
                     </button>
                   </div>
                 )}
 
                 {originMode === "API_EXTERNE" && (
-                  <div className="space-y-2 pt-1">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <select
-                        value={externalUniName}
-                        onChange={(e) => setExternalUniName(e.target.value)}
-                        className="px-2.5 py-1.5 bg-white border border-slate-300 rounded"
-                      >
-                        <option value="Université Mohammed V de Rabat">
-                          Université Mohammed V de Rabat
-                        </option>
-                        <option value="Université Cadi Ayyad de Marrakech">
-                          Université Cadi Ayyad de Marrakech
-                        </option>
-                        <option value="Université Hassan II de Casablanca">
-                          Université Hassan II de Casablanca
-                        </option>
-                      </select>
-                      <label className="inline-flex items-center gap-2 text-slate-700 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={apiConsent}
-                          onChange={(e) => setApiConsent(e.target.checked)}
-                        />
-                        <span>
-                          J'autorise explicitement la requête API vers mon université d'origine
-                        </span>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={handleRetrieveAcademicDocs}
-                        className="px-3 py-1.5 bg-slate-900 text-white font-semibold rounded"
-                      >
-                        Interroger l'API
-                      </button>
-                    </div>
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <select
+                      value={externalUniName}
+                      onChange={(e) => setExternalUniName(e.target.value)}
+                      className="px-2.5 py-1.5 bg-white border border-slate-300 rounded"
+                    >
+                      <option value="Université Mohammed V de Rabat">
+                        Université Mohammed V de Rabat
+                      </option>
+                      <option value="Université Cadi Ayyad de Marrakech">
+                        Université Cadi Ayyad de Marrakech
+                      </option>
+                      <option value="Université Hassan II de Casablanca">
+                        Université Hassan II de Casablanca
+                      </option>
+                    </select>
+                    <label className="inline-flex items-center gap-2 text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={apiConsent}
+                        onChange={(e) => setApiConsent(e.target.checked)}
+                      />
+                      <span>
+                        Consentement explicite pour interroger l'API de mon université d'origine
+                      </span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleRetrieveAcademicDocs}
+                      className="px-3 py-1.5 bg-slate-900 text-white font-semibold rounded"
+                    >
+                      Interroger l'API
+                    </button>
                   </div>
                 )}
 
                 {originMode === "DEPOT_PHYSIQUE" && (
                   <div className="text-slate-700">
-                    Vous pouvez déposer vos pièces papier directement au guichet du secrétariat du CEDoc : vos documents y seront numérisés avec remise d'un accusé de réception.
+                    Remise physique des originaux au secrétariat du CEDoc : numérisation sur place et délivrance d'un accusé de réception.
                   </div>
                 )}
 
@@ -1062,7 +1080,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
 
                 {retrievedSummary && (
                   <div className="p-2.5 bg-white border border-slate-200 rounded text-emerald-900">
-                    Pièces récupérées automatiquement ({retrievedSummary.origin}) :{" "}
+                    Pièces importées ({retrievedSummary.origin}) :{" "}
                     <strong>{retrievedSummary.retrievedDocs.join(", ")}</strong>.
                   </div>
                 )}
@@ -1124,7 +1142,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                   type="submit"
                   className="px-4 py-2 font-semibold bg-slate-900 text-white rounded hover:bg-slate-800"
                 >
-                  Créer le compte & Transmettre la candidature
+                  Créer le compte & Envoyer la candidature
                 </button>
               </div>
             </form>
@@ -1132,24 +1150,24 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
         </div>
       )}
 
-      {/* VUE 3 : RÉSULTATS D'ADMISSION & RECOURS */}
+      {/* 3. RÉSULTATS D'ADMISSION, BASCULE LISTE D'ATTENTE & RECOURS */}
       {subView === "resultats_recours" && (
         <div className="space-y-4 text-xs">
           <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2.5">
               <div className="font-bold text-slate-900">
-                Liste d'admission — Sujet CEDOC-IA-01
+                Publication des admis — Sujet CEDOC-IA-01 (Affichage numérique & Secrétariat)
               </div>
               <div className="text-slate-600">
                 {officialResultsPublished
-                  ? "Validée par le Président du Jury et le Directeur du CEDoc"
-                  : "En attente de la double validation (Président du Jury + Directeur du CEDoc)"}
+                  ? "Double validation effectuée (Président du Jury + Directeur du CEDoc)"
+                  : "En attente de double validation"}
               </div>
             </div>
 
             {!officialResultsPublished ? (
               <div className="py-6 text-center text-slate-500">
-                La liste officielle n'est rendue publique qu'après double validation dans l'espace Gestionnaires & Présidents.
+                Les résultats ne sont publiés qu'après validation conjointe du Président du Jury et du Directeur du CEDoc.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1157,12 +1175,10 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-semibold">
                       <th className="py-2 px-3">Rang</th>
-                      <th className="py-2 px-3">Dossier & Candidat</th>
-                      <th className="py-2 px-3 text-right">Note (/100)</th>
-                      <th className="py-2 px-3">Liste</th>
-                      <th className="py-2 px-3 text-right">
-                        Confirmation d'inscription
-                      </th>
+                      <th className="py-2 px-3">Candidat</th>
+                      <th className="py-2 px-3 text-right">Moyenne</th>
+                      <th className="py-2 px-3">Statut & Délai confirmation</th>
+                      <th className="py-2 px-3 text-right">Action candidat</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -1185,17 +1201,17 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                           <td className="py-2 px-3 text-right font-mono font-semibold tabular-nums">
                             {total} / 100
                           </td>
-                          <td className="py-2 px-3 font-semibold">
+                          <td className="py-2 px-3">
                             {app.attendanceStatus === "desiste" ? (
                               <span className="text-slate-400 line-through">
-                                Désisté
+                                Désisté (Remplacé automatiquement)
                               </span>
                             ) : isMain ? (
-                              <span className="text-emerald-800">
-                                Liste Principale
+                              <span className="text-emerald-800 font-semibold">
+                                Liste Principale (Confirmer avant {app.confirmationDeadline || "2026-11-12"})
                               </span>
                             ) : isWait ? (
-                              <span className="text-amber-800">
+                              <span className="text-amber-800 font-semibold">
                                 Liste d'Attente
                               </span>
                             ) : (
@@ -1257,51 +1273,77 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
               e.preventDefault();
               const target = candidates.find((c) => c.id === recoursDossierId);
               if (!target || !recoursMotif.trim()) return;
-              onUpdateApplication({ ...target, recoursText: recoursMotif.trim() });
+              onUpdateApplication({
+                ...target,
+                recoursText: recoursMotif.trim(),
+                recoursStatus: "en_instruction",
+              });
               setRecoursMotif("");
             }}
-            className="bg-white border border-slate-200 rounded-lg p-4 flex flex-col sm:flex-row items-end gap-3"
+            className="bg-white border border-slate-200 rounded-lg p-4 space-y-3"
           >
-            <div className="w-full sm:w-64">
-              <label className="block font-semibold text-slate-800 mb-1">
-                Déposer un recours (Délai : 5 jours)
-              </label>
-              <select
-                required
-                value={recoursDossierId}
-                onChange={(e) => setRecoursDossierId(e.target.value)}
-                className="w-full px-2.5 py-1.5 border border-slate-300 rounded bg-white"
+            <div className="flex flex-col sm:flex-row items-end gap-3">
+              <div className="w-full sm:w-64">
+                <label className="block font-semibold text-slate-800 mb-1">
+                  Procédure de recours (Délai : 5 jours)
+                </label>
+                <select
+                  required
+                  value={recoursDossierId}
+                  onChange={(e) => setRecoursDossierId(e.target.value)}
+                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded bg-white"
+                >
+                  <option value="">Sélectionner votre dossier...</option>
+                  {candidates.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.dossierCode} — {c.fullName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1 w-full">
+                <label className="block text-slate-600 mb-1">Motif du recours</label>
+                <input
+                  type="text"
+                  required
+                  value={recoursMotif}
+                  onChange={(e) => setRecoursMotif(e.target.value)}
+                  placeholder="Décrire l'erreur matérielle..."
+                  className="w-full px-2.5 py-1.5 border border-slate-300 rounded"
+                />
+              </div>
+              <button
+                type="submit"
+                className="px-3.5 py-1.5 font-semibold bg-slate-900 text-white rounded shrink-0"
               >
-                <option value="">Sélectionner votre dossier...</option>
-                {candidates.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.dossierCode} — {c.fullName}
-                  </option>
-                ))}
-              </select>
+                Déposer le recours
+              </button>
             </div>
-            <div className="flex-1 w-full">
-              <label className="block text-slate-600 mb-1">Motif du recours</label>
-              <input
-                type="text"
-                required
-                value={recoursMotif}
-                onChange={(e) => setRecoursMotif(e.target.value)}
-                placeholder="Exposer l'erreur matérielle constatée..."
-                className="w-full px-2.5 py-1.5 border border-slate-300 rounded"
-              />
-            </div>
-            <button
-              type="submit"
-              className="px-3.5 py-1.5 font-semibold bg-slate-900 text-white rounded shrink-0"
-            >
-              Envoyer le recours
-            </button>
+
+            {candidates.some((c) => c.recoursText) && (
+              <div className="pt-2 border-t border-slate-100 space-y-1">
+                {candidates
+                  .filter((c) => c.recoursText)
+                  .map((c) => (
+                    <div key={c.id} className="text-slate-700">
+                      <strong>{c.dossierCode} ({c.fullName}) :</strong> « {c.recoursText} » —{" "}
+                      <span className="font-semibold">
+                        {c.recoursStatus === "accepte"
+                          ? "Recours accepté"
+                          : c.recoursStatus === "rejete"
+                          ? "Recours rejeté"
+                          : "En cours d'instruction"}
+                      </span>
+                      {c.recoursDecisionNote ? ` (${c.recoursDecisionNote})` : ""}
+                    </div>
+                  ))}
+              </div>
+            )}
           </form>
         </div>
       )}
 
-      {/* VUE 4 : RÉINSCRIPTION DES DOCTORANTS */}
+      {/* 4. RÉINSCRIPTION DES DOCTORANTS (2A, 3A, DÉROGATION 4A+) */}
       {subView === "reinscription" && activeDoctorant && (
         <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-4 text-xs">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
@@ -1337,7 +1379,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-3 bg-slate-50 border border-slate-200 rounded space-y-1.5">
               <div className="font-semibold text-slate-900">
-                Pièces reconduites automatiquement (aucun redépôt)
+                Dossier socle reconduit automatiquement (aucun redépôt)
               </div>
               <ul className="space-y-1 text-slate-600">
                 {activeDoctorant.renewedBaseDocs.map((d, i) => (
@@ -1348,7 +1390,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
 
             <div className="p-3 border border-slate-200 rounded space-y-2">
               <div className="font-semibold text-slate-900">
-                Pièces mises à jour cette année (rapport d'avancement, travaux)
+                Pièces modifiées déposées cette année uniquement
               </div>
               <ul className="space-y-1 text-slate-800">
                 {activeDoctorant.updatedPieces.map((p, i) => (
@@ -1360,7 +1402,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                   type="text"
                   value={newPieceInput}
                   onChange={(e) => setNewPieceInput(e.target.value)}
-                  placeholder="Ajouter un rapport ou pièce modifiée..."
+                  placeholder="Ajouter rapport annuel ou pièce modifiée..."
                   className="flex-1 px-2 py-1 border border-slate-300 rounded"
                 />
                 <button
@@ -1369,6 +1411,7 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
                     if (!newPieceInput.trim()) return;
                     onUpdateReenrollment({
                       ...activeDoctorant,
+                      reportSubmitted: true,
                       updatedPieces: [
                         ...activeDoctorant.updatedPieces,
                         newPieceInput.trim(),
@@ -1384,34 +1427,42 @@ export const CandidateWorkspace: React.FC<CandidateWorkspaceProps> = ({
             </div>
           </div>
 
-          {activeDoctorant.blockMotif && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded text-red-900">
-              <strong>Motif de blocage / Règle de dérogation :</strong>{" "}
-              {activeDoctorant.blockMotif}
+          {activeDoctorant.derogationRequested && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded text-amber-950">
+              <strong>Règle de dérogation ({activeDoctorant.year}e année) :</strong>{" "}
+              {activeDoctorant.derogationJustification}
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+          {activeDoctorant.blockMotif && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded text-red-900">
+              <strong>Motif de blocage :</strong> {activeDoctorant.blockMotif}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 pt-1">
+            <div className="p-2.5 border border-slate-200 rounded">
+              <div className="text-slate-500">1. Rapport doctorant</div>
+              <div className="font-semibold text-slate-900 mt-0.5">
+                {activeDoctorant.reportSubmitted ? "Déposé" : "En attente"}
+              </div>
+            </div>
             <div className="p-2.5 border border-slate-200 rounded">
               <div className="text-slate-500">
-                1. Avis Directeur de thèse ({activeDoctorant.thesisDirector})
+                2. Avis Directeur de thèse ({activeDoctorant.thesisDirector})
               </div>
               <div className="font-semibold text-slate-900 mt-0.5">
                 {activeDoctorant.directorAvis}
               </div>
             </div>
             <div className="p-2.5 border border-slate-200 rounded">
-              <div className="text-slate-500">
-                2. Avis Directeur du laboratoire
-              </div>
+              <div className="text-slate-500">3. Avis Laboratoire</div>
               <div className="font-semibold text-slate-900 mt-0.5">
                 {activeDoctorant.labDirectorAvis}
               </div>
             </div>
             <div className="p-2.5 border border-slate-200 rounded">
-              <div className="text-slate-500">
-                3. Validation Directeur du CEDoc
-              </div>
+              <div className="text-slate-500">4. Validation CEDoc</div>
               <div className="font-semibold text-slate-900 mt-0.5">
                 {activeDoctorant.cedocState}
               </div>
