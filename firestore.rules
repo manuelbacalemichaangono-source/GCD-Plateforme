@@ -343,12 +343,12 @@ service cloud.firestore {
 
     // 1. One-time catalog initialization marker
     match /catalog_meta/{metaId} {
-      allow get: if metaId == 'seeded_v1';
+      allow get: if metaId in ['seeded_v1', 'seeded_v2'];
       allow create: if isSignedIn()
-        && metaId == 'seeded_v1'
+        && metaId in ['seeded_v1', 'seeded_v2']
         && isValidCatalogMeta(incoming())
         && incoming().createdAt == request.time
-        && !exists(/databases/$(database)/documents/catalog_meta/seeded_v1);
+        && !exists(/databases/$(database)/documents/catalog_meta/$(metaId));
       allow update, delete, list: if false;
     }
 
@@ -469,8 +469,13 @@ service cloud.firestore {
             && existing().laboratoire == myPersonnelData().laboratoire
           )
           || (
+            sujetId.matches('^sujet_init_(0[1-9]|1[0-9]|2[0-7])$')
+            && incoming().diff(existing()).affectedKeys().hasOnly(['description', 'updatedAt'])
+            && !exists(/databases/$(database)/documents/catalog_meta/seeded_v2)
+          )
+          || (
             isDirecteurCedoc()
-            && incoming().diff(existing()).affectedKeys().hasOnly(['statut', 'updatedAt'])
+            && incoming().diff(existing()).affectedKeys().hasOnly(['statut', 'description', 'updatedAt'])
           )
         );
 

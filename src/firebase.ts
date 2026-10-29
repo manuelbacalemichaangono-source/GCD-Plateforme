@@ -4,6 +4,9 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   signOut,
+  GoogleAuthProvider,
+  signInWithPopup,
+  User,
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -21,6 +24,13 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+
+export async function signInWithGooglePopup(): Promise<User> {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  const cred = await signInWithPopup(auth, provider);
+  return cred.user;
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -90,62 +100,80 @@ let seedingInFlight = false;
 
 /**
  * Seeds the 5 laboratories and 27 published subjects ONCE into Firestore
- * if `catalog_meta/seeded_v1` does not exist yet and a user is authenticated.
+ * if `catalog_meta/seeded_v1` does not exist yet (and upgrades initial descriptions
+ * once via `seeded_v2` if `seeded_v1` was already created).
  */
 export async function ensureInitialCatalogSeeded(): Promise<void> {
   if (!auth.currentUser || seedingInFlight) return;
   seedingInFlight = true;
   try {
-    const metaRef = doc(db, 'catalog_meta', 'seeded_v1');
-    const metaSnap = await getDoc(metaRef);
-    if (metaSnap.exists()) return;
+    const metaRefV1 = doc(db, 'catalog_meta', 'seeded_v1');
+    const metaRefV2 = doc(db, 'catalog_meta', 'seeded_v2');
+    const [metaSnapV1, metaSnapV2] = await Promise.all([getDoc(metaRefV1), getDoc(metaRefV2)]);
 
-    const batch = writeBatch(db);
     const now = serverTimestamp();
 
-    for (const lab of INITIAL_LABORATOIRES) {
-      batch.set(doc(db, 'laboratoires', lab.id), {
-        code: lab.code,
-        nom: lab.nom,
-        directeurs: lab.directeurs,
-        disciplines: lab.disciplines,
+    if (!metaSnapV1.exists()) {
+      const batch = writeBatch(db);
+
+      for (const lab of INITIAL_LABORATOIRES) {
+        batch.set(doc(db, 'laboratoires', lab.id), {
+          code: lab.code,
+          nom: lab.nom,
+          directeurs: lab.directeurs,
+          disciplines: lab.disciplines,
+          createdAt: now,
+        });
+      }
+
+      for (const sujet of INITIAL_SUJETS) {
+        batch.set(doc(db, 'sujets', sujet.id), {
+          intitule: sujet.intitule,
+          description: sujet.description,
+          discipline: sujet.discipline,
+          directeur: sujet.directeur,
+          directeurEmail: sujet.directeurEmail,
+          laboratoire: sujet.laboratoire,
+          statut: 'Publié',
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+
+      batch.set(metaRefV1, {
+        seeded: true,
+        seededBy: auth.currentUser.uid,
         createdAt: now,
       });
-    }
-
-    for (const sujet of INITIAL_SUJETS) {
-      batch.set(doc(db, 'sujets', sujet.id), {
-        intitule: sujet.intitule,
-        description: sujet.description,
-        discipline: sujet.discipline,
-        directeur: sujet.directeur,
-        directeurEmail: sujet.directeurEmail,
-        laboratoire: sujet.laboratoire,
-        statut: 'Publié',
+      batch.set(metaRefV2, {
+        seeded: true,
+        seededBy: auth.currentUser.uid,
         createdAt: now,
-        updatedAt: now,
       });
+
+      await batch.commit();
+    } else if (!metaSnapV2.exists()) {
+      const batch = writeBatch(db);
+      for (const sujet of INITIAL_SUJETS) {
+        batch.update(doc(db, 'sujets', sujet.id), {
+          description: sujet.description,
+          updatedAt: now,
+        });
+      }
+      batch.set(metaRefV2, {
+        seeded: true,
+        seededBy: auth.currentUser.uid,
+        createdAt: now,
+      });
+      await batch.commit();
     }
-
-    batch.set(metaRef, {
-      seeded: true,
-      seededBy: auth.currentUser.uid,
-      createdAt: now,
-    });
-
-    await batch.commit();
   } catch {
-    // Ignore race if another session already committed `seeded_v1`
+    // Ignore race if another session already committed
   } finally {
     seedingInFlight = false;
   }
 }
 
-/**
- * Creates a Firebase Auth account for a newly added staff email using a secondary
- * Firebase App instance (preserving the current Directeur du CEDoc session) and sends
- * a password-reset email so the staff member sets their own password.
- */
 export async function provisionPersonnelAuthAccount(emailLower: string): Promise<void> {
   const secondaryName = `cedoc_prov_${Date.now()}`;
   const existingSecondary = getApps().find((a) => a.name === secondaryName);
@@ -186,8 +214,12 @@ export function translateFirebaseAuthError(error: unknown): string {
       return 'Mot de passe trop court (6 caractères minimum).';
     case 'auth/too-many-requests':
       return 'Trop de tentatives. Réessayez plus tard.';
+    case 'auth/popup-closed-by-user':
+      return 'Fenêtre de connexion fermée.';
+    case 'auth/popup-blocked':
+      return 'Autorisez les fenêtres pop-up pour vous connecter avec Google.';
     case 'auth/operation-not-allowed':
-      return 'Activez Email/Mot de passe dans Firebase Console > Authentication.';
+      return 'Utilisez le bouton Compte Google ci-dessous (ou activez Email/Mot de passe dans Firebase).';
     default:
       return 'Une erreur est survenue.';
   }

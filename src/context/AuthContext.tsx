@@ -15,6 +15,7 @@ import {
   ensureInitialCatalogSeeded,
   handleFirestoreError,
   OperationType,
+  signInWithGooglePopup,
 } from '../firebase';
 import { SEED_ADMIN_EMAIL } from '../config/constants';
 import { CandidatureRecord, PersonnelRecord, PersonnelRole } from '../types/cedoc';
@@ -30,6 +31,7 @@ interface AuthContextValue {
   setActivePersonnelRole: (role: PersonnelRole | null) => void;
   candidature: CandidatureRecord | null;
   loginWithEmail: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: () => Promise<User>;
   registerCandidat: (nom: string, email: string, password: string) => Promise<User>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -211,6 +213,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
   };
 
+  const loginWithGoogle = async () => {
+    return await signInWithGooglePopup();
+  };
+
   const registerCandidat = async (nom: string, email: string, password: string) => {
     const cleanEmail = email.trim().toLowerCase();
     const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
@@ -239,6 +245,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setActivePersonnelRole,
         candidature,
         loginWithEmail,
+        loginWithGoogle,
         registerCandidat,
         resetPassword,
         logout,
