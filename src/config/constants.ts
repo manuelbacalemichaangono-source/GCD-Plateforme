@@ -1,5 +1,7 @@
 export const PRESENTATION_CEDOC =
-  "Le Centre d'Études Doctorales de l'École Supérieure de Technologie de Fès accueille les chercheurs au sein de ses laboratoires accrédités en sciences de l'ingénieur, numérique, management et procédés bio-alimentaires. Consultez librement les sujets de thèse ouverts et déposez votre dossier en ligne.";
+  "Le CEDoc de l'EST Fès réunit des laboratoires accrédités en sciences de l'ingénieur, numérique, management et procédés bio-alimentaires. Consultez les sujets de thèse ouverts, puis inscrivez-vous au cycle doctoral.";
+
+export const CAMPAGNE_ACTUELLE = '2026-2027';
 
 export const SEED_ADMIN_EMAIL = 'aladinmonroe0@gmail.com';
 

@@ -1,9 +1,6 @@
-import { initializeApp, getApps, deleteApp } from 'firebase/app';
+import { initializeApp } from 'firebase/app';
 import {
   getAuth,
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  signOut,
   GoogleAuthProvider,
   signInWithPopup,
   User,
@@ -100,8 +97,8 @@ let seedingInFlight = false;
 
 /**
  * Seeds the 5 laboratories and 27 published subjects ONCE into Firestore
- * if `catalog_meta/seeded_v1` does not exist yet (and upgrades initial descriptions
- * once via `seeded_v2` if `seeded_v1` was already created).
+ * if `catalog_meta/seeded_v1` does not exist yet, and upgrades existing
+ * 27 subject descriptions in Firestore to the 50–70 word format via `seeded_v3`.
  */
 export async function ensureInitialCatalogSeeded(): Promise<void> {
   if (!auth.currentUser || seedingInFlight) return;
@@ -109,7 +106,11 @@ export async function ensureInitialCatalogSeeded(): Promise<void> {
   try {
     const metaRefV1 = doc(db, 'catalog_meta', 'seeded_v1');
     const metaRefV2 = doc(db, 'catalog_meta', 'seeded_v2');
-    const [metaSnapV1, metaSnapV2] = await Promise.all([getDoc(metaRefV1), getDoc(metaRefV2)]);
+    const metaRefV3 = doc(db, 'catalog_meta', 'seeded_v3');
+    const [metaSnapV1, metaSnapV3] = await Promise.all([
+      getDoc(metaRefV1),
+      getDoc(metaRefV3),
+    ]);
 
     const now = serverTimestamp();
 
@@ -140,19 +141,17 @@ export async function ensureInitialCatalogSeeded(): Promise<void> {
         });
       }
 
-      batch.set(metaRefV1, {
+      const markerData = {
         seeded: true,
         seededBy: auth.currentUser.uid,
         createdAt: now,
-      });
-      batch.set(metaRefV2, {
-        seeded: true,
-        seededBy: auth.currentUser.uid,
-        createdAt: now,
-      });
+      };
+      batch.set(metaRefV1, markerData);
+      batch.set(metaRefV2, markerData);
+      batch.set(metaRefV3, markerData);
 
       await batch.commit();
-    } else if (!metaSnapV2.exists()) {
+    } else if (!metaSnapV3.exists()) {
       const batch = writeBatch(db);
       for (const sujet of INITIAL_SUJETS) {
         batch.update(doc(db, 'sujets', sujet.id), {
@@ -160,7 +159,7 @@ export async function ensureInitialCatalogSeeded(): Promise<void> {
           updatedAt: now,
         });
       }
-      batch.set(metaRefV2, {
+      batch.set(metaRefV3, {
         seeded: true,
         seededBy: auth.currentUser.uid,
         createdAt: now,
@@ -171,29 +170,6 @@ export async function ensureInitialCatalogSeeded(): Promise<void> {
     // Ignore race if another session already committed
   } finally {
     seedingInFlight = false;
-  }
-}
-
-export async function provisionPersonnelAuthAccount(emailLower: string): Promise<void> {
-  const secondaryName = `cedoc_prov_${Date.now()}`;
-  const existingSecondary = getApps().find((a) => a.name === secondaryName);
-  const secondaryApp = existingSecondary ?? initializeApp(firebaseConfig, secondaryName);
-  const secondaryAuth = getAuth(secondaryApp);
-
-  try {
-    const randomInitialSecret = `Cedoc!${Math.random().toString(36).slice(2, 10)}9A#`;
-    try {
-      await createUserWithEmailAndPassword(secondaryAuth, emailLower, randomInitialSecret);
-      await signOut(secondaryAuth);
-    } catch (err: unknown) {
-      const code = (err as { code?: string })?.code;
-      if (code && code !== 'auth/email-already-in-use') {
-        throw err;
-      }
-    }
-    await sendPasswordResetEmail(auth, emailLower);
-  } finally {
-    await deleteApp(secondaryApp).catch(() => {});
   }
 }
 
@@ -217,9 +193,9 @@ export function translateFirebaseAuthError(error: unknown): string {
     case 'auth/popup-closed-by-user':
       return 'Fenêtre de connexion fermée.';
     case 'auth/popup-blocked':
-      return 'Autorisez les fenêtres pop-up pour vous connecter avec Google.';
+      return 'Autorisez les fenêtres pop-up pour continuer avec Google.';
     case 'auth/operation-not-allowed':
-      return 'Utilisez le bouton Compte Google ci-dessous (ou activez Email/Mot de passe dans Firebase).';
+      return 'Utilisez le bouton Continuer avec Google ci-dessous.';
     default:
       return 'Une erreur est survenue.';
   }

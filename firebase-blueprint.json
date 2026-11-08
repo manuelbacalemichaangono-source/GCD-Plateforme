@@ -48,7 +48,7 @@
         "directeur": { "type": "string", "minLength": 2, "maxLength": 120 },
         "directeurEmail": { "type": "string", "maxLength": 160 },
         "laboratoire": { "type": "string", "minLength": 2, "maxLength": 80 },
-        "statut": { "type": "string", "enum": ["En attente", "Publié", "Refusé"] },
+        "statut": { "type": "string", "enum": ["En attente", "Publié", "Refusé", "Rejeté"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },

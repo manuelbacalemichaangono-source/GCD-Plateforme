@@ -1,108 +1,33 @@
+import { CAMPAGNE_ACTUELLE } from '../config/constants';
 import { SujetRecord } from '../types/cedoc';
 
 export interface AdvancedFilters {
   discipline: string;
   laboratoire: string;
   directeur: string;
+  motsCles: string;
+  campagne: string;
 }
+
+export const INITIAL_ADVANCED_FILTERS: AdvancedFilters = {
+  discipline: '',
+  laboratoire: '',
+  directeur: '',
+  motsCles: '',
+  campagne: CAMPAGNE_ACTUELLE,
+};
 
 export interface CascadeResult {
   effectiveFilters: AdvancedFilters;
   matchedSubjects: SujetRecord[];
-  options: {
+  hasActiveUserFilter: boolean;
+  validOptionsPerFilter: {
     disciplines: string[];
     laboratoires: string[];
     directeurs: string[];
+    campagnes: string[];
   };
 }
-
-/**
- * Single pure bidirectional selective cascade function:
- * Given published subjects and active filters, computes valid options for EVERY filter
- * strictly from subjects matching all OTHER active filters (never producing 0-result options),
- * and auto-preselects any filter that resolves to a single possible option when at least one
- * filter is already active.
- */
-export function computeSelectiveCascade(
-  publishedSubjects: SujetRecord[],
-  rawFilters: AdvancedFilters
-): CascadeResult {
-  const filters: AdvancedFilters = { ...rawFilters };
-  const hasAnySelection = Boolean(filters.discipline || filters.laboratoire || filters.directeur);
-
-  const computeOptions = (current: AdvancedFilters) => {
-    const forDiscipline = publishedSubjects.filter(
-      (s) =>
-        (!current.laboratoire || s.laboratoire === current.laboratoire) &&
-        (!current.directeur || s.directeur === current.directeur)
-    );
-    const forLaboratoire = publishedSubjects.filter(
-      (s) =>
-        (!current.discipline || s.discipline === current.discipline) &&
-        (!current.directeur || s.directeur === current.directeur)
-    );
-    const forDirecteur = publishedSubjects.filter(
-      (s) =>
-        (!current.discipline || s.discipline === current.discipline) &&
-        (!current.laboratoire || s.laboratoire === current.laboratoire)
-    );
-
-    const uniqueSorted = (arr: string[]) =>
-      Array.from(new Set(arr)).sort((a, b) => a.localeCompare(b, 'fr'));
-
-    return {
-      disciplines: uniqueSorted(forDiscipline.map((s) => s.discipline)),
-      laboratoires: uniqueSorted(forLaboratoire.map((s) => s.laboratoire)),
-      directeurs: uniqueSorted(forDirecteur.map((s) => s.directeur)),
-    };
-  };
-
-  let options = computeOptions(filters);
-
-  if (hasAnySelection) {
-    let changed = true;
-    let guard = 0;
-    while (changed && guard < 4) {
-      changed = false;
-      guard += 1;
-      if (!filters.discipline && options.disciplines.length === 1) {
-        filters.discipline = options.disciplines[0];
-        changed = true;
-      }
-      if (!filters.laboratoire && options.laboratoires.length === 1) {
-        filters.laboratoire = options.laboratoires[0];
-        changed = true;
-      }
-      if (!filters.directeur && options.directeurs.length === 1) {
-        filters.directeur = options.directeurs[0];
-        changed = true;
-      }
-      if (changed) {
-        options = computeOptions(filters);
-      }
-    }
-  }
-
-  const anyActive = Boolean(filters.discipline || filters.laboratoire || filters.directeur);
-  const matchedSubjects = anyActive
-    ? publishedSubjects.filter(
-        (s) =>
-          (!filters.discipline || s.discipline === filters.discipline) &&
-          (!filters.laboratoire || s.laboratoire === filters.laboratoire) &&
-          (!filters.directeur || s.directeur === filters.directeur)
-      )
-    : [];
-
-  return {
-    effectiveFilters: filters,
-    matchedSubjects,
-    options,
-  };
-}
-
-// ============================================================================
-// GOOGLE-STYLE SMART SEARCH & SUGGESTIONS
-// ============================================================================
 
 export function normalizeSearchText(input: string): string {
   return input
@@ -127,149 +52,193 @@ function levenshtein(a: string, b: string): number {
   return dp[a.length][b.length];
 }
 
-const DOMAIN_EXPRESSIONS: string[] = [
-  'Intelligence artificielle',
-  'Apprentissage automatique',
-  'Architecture microservices',
-  'Systèmes embarqués',
-  'Cybersécurité et réseaux',
-  'Cryptographie post-quantique',
-  'Transformation digitale',
-  'Chaîne logistique',
-  'Jumeaux numériques',
-  'Fabrication additive',
-  'Matériaux composites',
-  'Maintenance prédictive',
-  'Sobriété énergétique',
-  'Biotechnologie alimentaire',
-  'Emballages biodégradables',
-];
-
-export interface SmartSuggestion {
-  kind: 'expression' | 'sujet';
-  text: string;
-  sujetId?: string;
-  matchStart: number;
-  matchLength: number;
-}
-
-export function subjectMatchesExpression(sujet: SujetRecord, expression: string): boolean {
-  const normExpr = normalizeSearchText(expression);
-  if (!normExpr) return false;
-  const haystack = normalizeSearchText(
-    `${sujet.intitule} ${sujet.discipline} ${sujet.description} ${sujet.laboratoire} ${sujet.directeur}`
-  );
-  if (haystack.includes(normExpr)) return true;
-
-  const tokens = normExpr.split(/\s+/).filter((t) => t.length >= 3);
-  if (tokens.length === 0) return false;
-  return tokens.every((tok) => haystack.includes(tok));
-}
-
-function scoreCandidateText(text: string, normQuery: string): {
-  rank: number; // 1 = string starts with, 2 = word starts with, 3 = contains, 4 = minor typo
-  matchStart: number;
-  matchLength: number;
-} | null {
-  const normText = normalizeSearchText(text);
-  if (!normText || !normQuery) return null;
-
-  if (normText.startsWith(normQuery)) {
-    return { rank: 1, matchStart: 0, matchLength: normQuery.length };
-  }
-
-  const idx = normText.indexOf(normQuery);
-  if (idx > 0) {
-    const isWordBoundary = /[\s\-'’/(]/.test(normText[idx - 1]);
-    return {
-      rank: isWordBoundary ? 2 : 3,
-      matchStart: idx,
-      matchLength: normQuery.length,
-    };
-  }
-
-  // Typo tolerance (distance <= 1) for queries of at least 4 chars against word prefixes
-  if (normQuery.length >= 4) {
-    const wordRegex = /[a-z0-9]+/g;
-    let m: RegExpExecArray | null;
-    while ((m = wordRegex.exec(normText)) !== null) {
-      const word = m[0];
-      const prefix = word.slice(0, normQuery.length);
-      if (prefix.length >= 3 && levenshtein(prefix, normQuery) <= 1) {
-        return {
-          rank: 4,
-          matchStart: m.index,
-          matchLength: Math.min(word.length, normQuery.length),
-        };
+function tokenMatchesText(normText: string, token: string): boolean {
+  if (!token) return true;
+  if (normText.includes(token)) return true;
+  if (token.length >= 4) {
+    const words = normText.split(/[^a-z0-9]+/).filter(Boolean);
+    for (const w of words) {
+      if (w.length >= 3) {
+        const prefix = w.slice(0, Math.min(w.length, token.length));
+        if (Math.abs(prefix.length - token.length) <= 1 && levenshtein(prefix, token) <= 1) {
+          return true;
+        }
+        if (Math.abs(w.length - token.length) <= 1 && levenshtein(w, token) <= 1) {
+          return true;
+        }
       }
     }
   }
-
-  return null;
+  return false;
 }
 
-export function computeSmartSuggestions(
+export function subjectMatchesKeywordQuery(sujet: SujetRecord, rawQuery: string): boolean {
+  const normQuery = normalizeSearchText(rawQuery);
+  if (normQuery.length < 2) return false;
+  const haystack = normalizeSearchText(
+    `${sujet.intitule} ${sujet.description} ${sujet.laboratoire} ${sujet.directeur} ${sujet.discipline}`
+  );
+  if (haystack.includes(normQuery)) return true;
+  const tokens = normQuery.split(/\s+/).filter((t) => t.length >= 2);
+  if (tokens.length === 0) return false;
+  return tokens.every((tok) => tokenMatchesText(haystack, tok));
+}
+
+/**
+ * 3.1 Live automatic search (200 ms debounce handled in UI, active from 2 characters):
+ * Searches across intitulé, mots-clés (description), laboratoire, directeur, and domaine (discipline),
+ * tolerating accents, case, and minor 1-character typos.
+ * Orders first subjects whose title starts with the query, then those containing it.
+ * Excludes already-opened subjects and returns at most 8 items.
+ */
+export function computeLiveSearchResults(
   publishedSubjects: SujetRecord[],
-  rawQuery: string
-): SmartSuggestion[] {
+  rawQuery: string,
+  excludedIds: string[] = [],
+  maxResults = 8
+): SujetRecord[] {
   const normQuery = normalizeSearchText(rawQuery);
   if (normQuery.length < 2) return [];
 
-  const uniqueDisciplines = Array.from(new Set(publishedSubjects.map((s) => s.discipline)));
-  const candidateExpressions = Array.from(new Set([...uniqueDisciplines, ...DOMAIN_EXPRESSIONS])).filter(
-    (expr) => publishedSubjects.some((s) => subjectMatchesExpression(s, expr))
-  );
-
-  const scored: Array<SmartSuggestion & { rank: number }> = [];
-
-  for (const expr of candidateExpressions) {
-    const s = scoreCandidateText(expr, normQuery);
-    if (s) {
-      scored.push({
-        kind: 'expression',
-        text: expr,
-        matchStart: s.matchStart,
-        matchLength: s.matchLength,
-        rank: s.rank,
-      });
-    }
-  }
+  const excluded = new Set(excludedIds);
+  const scored: Array<{ sujet: SujetRecord; rank: number }> = [];
 
   for (const sujet of publishedSubjects) {
-    const s = scoreCandidateText(sujet.intitule, normQuery);
-    if (s) {
-      scored.push({
-        kind: 'sujet',
-        text: sujet.intitule,
-        sujetId: sujet.id,
-        matchStart: s.matchStart,
-        matchLength: s.matchLength,
-        rank: s.rank,
-      });
+    if (excluded.has(sujet.id)) continue;
+    if (!subjectMatchesKeywordQuery(sujet, rawQuery)) continue;
+
+    const normTitle = normalizeSearchText(sujet.intitule);
+    let rank = 4;
+    if (normTitle.startsWith(normQuery)) {
+      rank = 1;
+    } else if (normTitle.includes(normQuery)) {
+      rank = 2;
+    } else {
+      const normMeta = normalizeSearchText(
+        `${sujet.discipline} ${sujet.laboratoire} ${sujet.directeur}`
+      );
+      rank = normMeta.includes(normQuery) ? 3 : 4;
     }
+
+    scored.push({ sujet, rank });
   }
 
   scored.sort((a, b) => {
     if (a.rank !== b.rank) return a.rank - b.rank;
-    if (a.kind !== b.kind) return a.kind === 'expression' ? -1 : 1;
-    return a.text.localeCompare(b.text, 'fr');
+    return a.sujet.intitule.localeCompare(b.sujet.intitule, 'fr');
   });
 
-  const seen = new Set<string>();
-  const finalList: SmartSuggestion[] = [];
-  for (const item of scored) {
-    const key = normalizeSearchText(item.text);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    finalList.push({
-      kind: item.kind,
-      text: item.text,
-      sujetId: item.sujetId,
-      matchStart: item.matchStart,
-      matchLength: item.matchLength,
-    });
-    if (finalList.length >= 8) break;
+  return scored.slice(0, maxResults).map((item) => item.sujet);
+}
+
+/**
+ * 3.5 Single bidirectional selective cascade function:
+ * Returns (effectiveFilters, matchedSubjects, validOptionsPerFilter).
+ * Options of EVERY filter are calculated strictly from published subjects matching
+ * all OTHER active filters (never displaying a 0-result option).
+ * Auto-preselects any filter reduced to 1 option when another user filter is active.
+ */
+export function computeSelectiveCascade(
+  publishedSubjects: SujetRecord[],
+  rawFilters: AdvancedFilters,
+  excludedIds: string[] = []
+): CascadeResult {
+  const excluded = new Set(excludedIds);
+  const filters: AdvancedFilters = {
+    ...rawFilters,
+    campagne: rawFilters.campagne || CAMPAGNE_ACTUELLE,
+  };
+
+  const hasMotsCles = normalizeSearchText(filters.motsCles).length >= 2;
+  const hasUserCriterion = Boolean(
+    filters.discipline || filters.laboratoire || filters.directeur || hasMotsCles
+  );
+
+  const matchesKeywordIfAny = (s: SujetRecord, kw: string) => {
+    if (normalizeSearchText(kw).length < 2) return true;
+    return subjectMatchesKeywordQuery(s, kw);
+  };
+
+  const uniqueSorted = (arr: string[]) =>
+    Array.from(new Set(arr)).sort((a, b) => a.localeCompare(b, 'fr'));
+
+  const computeOptions = (current: AdvancedFilters) => {
+    const forDiscipline = publishedSubjects.filter(
+      (s) =>
+        (!current.laboratoire || s.laboratoire === current.laboratoire) &&
+        (!current.directeur || s.directeur === current.directeur) &&
+        matchesKeywordIfAny(s, current.motsCles)
+    );
+    const forLaboratoire = publishedSubjects.filter(
+      (s) =>
+        (!current.discipline || s.discipline === current.discipline) &&
+        (!current.directeur || s.directeur === current.directeur) &&
+        matchesKeywordIfAny(s, current.motsCles)
+    );
+    const forDirecteur = publishedSubjects.filter(
+      (s) =>
+        (!current.discipline || s.discipline === current.discipline) &&
+        (!current.laboratoire || s.laboratoire === current.laboratoire) &&
+        matchesKeywordIfAny(s, current.motsCles)
+    );
+
+    return {
+      disciplines: uniqueSorted(forDiscipline.map((s) => s.discipline)),
+      laboratoires: uniqueSorted(forLaboratoire.map((s) => s.laboratoire)),
+      directeurs: uniqueSorted(forDirecteur.map((s) => s.directeur)),
+      campagnes: [CAMPAGNE_ACTUELLE],
+    };
+  };
+
+  let validOptionsPerFilter = computeOptions(filters);
+
+  if (hasUserCriterion) {
+    let changed = true;
+    let guard = 0;
+    while (changed && guard < 4) {
+      changed = false;
+      guard += 1;
+      if (!filters.discipline && validOptionsPerFilter.disciplines.length === 1) {
+        filters.discipline = validOptionsPerFilter.disciplines[0];
+        changed = true;
+      }
+      if (!filters.laboratoire && validOptionsPerFilter.laboratoires.length === 1) {
+        filters.laboratoire = validOptionsPerFilter.laboratoires[0];
+        changed = true;
+      }
+      if (!filters.directeur && validOptionsPerFilter.directeurs.length === 1) {
+        filters.directeur = validOptionsPerFilter.directeurs[0];
+        changed = true;
+      }
+      if (changed) {
+        validOptionsPerFilter = computeOptions(filters);
+      }
+    }
   }
 
-  return finalList;
+  const effectiveHasCriterion = Boolean(
+    filters.discipline ||
+      filters.laboratoire ||
+      filters.directeur ||
+      normalizeSearchText(filters.motsCles).length >= 2
+  );
+
+  const matchedSubjects = effectiveHasCriterion
+    ? publishedSubjects
+        .filter(
+          (s) =>
+            !excluded.has(s.id) &&
+            (!filters.discipline || s.discipline === filters.discipline) &&
+            (!filters.laboratoire || s.laboratoire === filters.laboratoire) &&
+            (!filters.directeur || s.directeur === filters.directeur) &&
+            matchesKeywordIfAny(s, filters.motsCles)
+        )
+    : [];
+
+  return {
+    effectiveFilters: filters,
+    matchedSubjects,
+    hasActiveUserFilter: effectiveHasCriterion,
+    validOptionsPerFilter,
+  };
 }

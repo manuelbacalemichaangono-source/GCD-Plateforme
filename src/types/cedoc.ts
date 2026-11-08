@@ -1,19 +1,4 @@
-export type PersonnelRole =
-  | 'Secrétariat CEDoc'
-  | 'Jury'
-  | 'Directeur de thèse'
-  | 'Directeur du laboratoire'
-  | 'Directeur du CEDoc';
-
-export const ALL_PERSONNEL_ROLES: PersonnelRole[] = [
-  'Secrétariat CEDoc',
-  'Jury',
-  'Directeur de thèse',
-  'Directeur du laboratoire',
-  'Directeur du CEDoc',
-];
-
-export type StatutSujet = 'En attente' | 'Publié' | 'Refusé';
+export type StatutSujet = 'En attente' | 'Publié' | 'Refusé' | 'Rejeté';
 
 export type StatutCandidature =
   | 'Compte créé'
@@ -25,36 +10,11 @@ export type StatutCandidature =
   | 'Non présélectionné'
   | 'Convoqué'
   | 'Admis'
-  | 'Non admis'
-  | 'Inscrit';
+  | 'Non admis';
 
 export type StatutPiece = 'Manquante' | 'Reçue' | 'Conforme' | 'Non conforme';
 
-export type StatutPrecontroleIA = 'Conforme' | 'Douteux' | 'Non conforme';
-
-export type StatutReinscription = 'En dépôt' | 'Envoyée' | 'Incomplet' | 'Validée';
-
-export type PieceSlotCandidature = 'identite' | 'diplome' | 'releves' | 'projet' | 'cv';
-
-export type PieceSlotReinscription =
-  | 'rapport_avancement'
-  | 'attestation_encadrant'
-  | 'charte_signee';
-
-export interface PersonnelRecord {
-  email: string;
-  nom: string;
-  roles: PersonnelRole[];
-  laboratoire: string;
-}
-
-export interface LaboratoireRecord {
-  id: string;
-  code: string;
-  nom: string;
-  directeurs: string[];
-  disciplines: string[];
-}
+export type PieceSlotPreselection = 'cv' | 'dut_licence' | 'diplome' | 'releves' | 'projet';
 
 export interface SujetRecord {
   id: string;
@@ -65,33 +25,20 @@ export interface SujetRecord {
   directeurEmail: string;
   laboratoire: string;
   statut: StatutSujet;
+  prerequis?: string;
 }
 
-export interface CandidatureRecord {
-  candidatId: string;
+export interface LaboratoireRecord {
+  id: string;
+  code: string;
   nom: string;
-  email: string;
-  sujetId: string;
-  sujetIntitule: string;
-  sujetDescription: string;
-  sujetDiscipline: string;
-  directeur: string;
-  directeurEmail: string;
-  laboratoire: string;
-  universiteOrigine: '' | 'EST Fès' | 'Autre';
-  cne: string;
-  recuperationAuto: boolean;
-  statut: StatutCandidature;
-  nouveauDelai: string;
-  convocationDate: string;
-  convocationLieu: string;
-  recoursDepose: boolean;
-  recoursMotif: string;
+  directeurs: string[];
+  disciplines: string[];
 }
 
 export interface PieceDossierRecord {
   ownerId: string;
-  slotId: string;
+  slotId: PieceSlotPreselection;
   label: string;
   fileName: string;
   mimeType: string;
@@ -100,52 +47,83 @@ export interface PieceDossierRecord {
   downloadUrl: string;
   sourceAuto: boolean;
   statut: StatutPiece;
-  motif: string;
+  motif?: string;
+  updatedAt?: string;
 }
 
-export interface PrecontroleIARecord {
+export interface CandidatureRecord {
   candidatId: string;
-  slotId: string;
-  statut: StatutPrecontroleIA;
-  motif: string;
-  fileName: string;
-}
-
-export interface ReinscriptionRecord {
-  doctorantId: string;
   nom: string;
+  prenom?: string;
   email: string;
-  annee: number;
-  sujetIntitule: string;
-  directeur: string;
-  laboratoire: string;
-  statut: StatutReinscription;
-  nouveauDelai: string;
+  telephone?: string;
+  cne: string;
+  universiteOrigine: 'EST Fès' | 'Autre' | '';
+  recuperationAuto: boolean;
+  sujetsChoisis: SujetRecord[];
+  statut: StatutCandidature;
+  dateSoumission?: string;
+  convocationDate?: string;
+  convocationLieu?: string;
+  nouveauDelai?: string;
+  motifRejet?: string;
 }
 
-export interface PublicationAdmisRecord {
-  valideeParCedoc: boolean;
-  publieeParSecretariat: boolean;
-  admis: string[];
+export interface CandidateProfile {
+  nom: string;
+  prenom: string;
+  email: string;
+  telephone: string;
+  cne: string;
+  etablissementOrigine: string;
+  diplomeObtenu: string;
+  anneeDiplome: string;
+  avatarUrl?: string;
 }
 
-export const CANDIDATURE_SLOTS: Array<{
-  slotId: PieceSlotCandidature;
+export const PRESELECTION_SLOTS: Array<{
+  slotId: PieceSlotPreselection;
   label: string;
+  description: string;
   autoEligible: boolean;
 }> = [
-  { slotId: 'identite', label: "Pièce d'identité", autoEligible: false },
-  { slotId: 'diplome', label: 'Diplôme Master / Ingénieur', autoEligible: true },
-  { slotId: 'releves', label: 'Relevés de notes', autoEligible: true },
-  { slotId: 'projet', label: 'Projet de thèse', autoEligible: false },
-  { slotId: 'cv', label: 'CV scientifique', autoEligible: false },
+  {
+    slotId: 'cv',
+    label: 'CV académique et scientifique',
+    description: 'Parcours universitaire détaillé, compétences techniques, stages et publications éventuelles (PDF, max 5 Mo).',
+    autoEligible: false,
+  },
+  {
+    slotId: 'dut_licence',
+    label: 'Diplôme de DUT ou Titre de Licence',
+    description: 'Copie du diplôme de DUT, Licence professionnelle ou fondamentale (PDF, max 5 Mo).',
+    autoEligible: true,
+  },
+  {
+    slotId: 'diplome',
+    label: 'Copie du diplôme de Master ou Ingénieur',
+    description: 'Attestation de réussite ou diplôme officiel certifié conforme (PDF, max 5 Mo).',
+    autoEligible: true,
+  },
+  {
+    slotId: 'releves',
+    label: 'Relevés de notes universitaires',
+    description: 'Relevés globaux des semestres de Licence et de Master/Ingénieur (PDF, max 5 Mo).',
+    autoEligible: true,
+  },
+  {
+    slotId: 'projet',
+    label: 'Avant-projet de recherche de thèse',
+    description: 'Note de cadrage synthétique (2 à 4 pages) précisant la problématique, les objectifs et la méthodologie (PDF, max 5 Mo).',
+    autoEligible: false,
+  },
 ];
 
-export const REINSCRIPTION_SLOTS: Array<{
-  slotId: PieceSlotReinscription;
-  label: string;
-}> = [
-  { slotId: 'rapport_avancement', label: "Rapport d'avancement" },
-  { slotId: 'attestation_encadrant', label: 'Attestation du directeur de thèse' },
-  { slotId: 'charte_signee', label: 'Charte des thèses signée' },
-];
+export interface TimelineStep {
+  id: string;
+  title: string;
+  subtitle: string;
+  state: 'validee' | 'action_requise' | 'en_attente';
+  dateInfo?: string;
+  note?: string;
+}
