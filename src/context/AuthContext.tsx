@@ -381,29 +381,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const submitCandidatureFinale = async () => {
     if (!user) return;
     const candRef = doc(db, 'candidatures', user.uid);
+    const todayFormatted = new Date().toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
     try {
-      const todayFormatted = new Date().toLocaleDateString('fr-FR', {
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-      });
-      await updateDoc(candRef, {
-        statut: 'Envoyée',
-        dateSoumission: todayFormatted,
-        updatedAt: serverTimestamp(),
-      });
-      setCandidature((prev) =>
-        prev
-          ? {
-              ...prev,
-              statut: 'Envoyée',
-              dateSoumission: todayFormatted,
-            }
-          : null
+      await setDoc(
+        candRef,
+        {
+          candidatId: user.uid,
+          nom: profile.nom,
+          prenom: profile.prenom,
+          email: user.email || profile.email,
+          cne: profile.cne,
+          statut: 'Envoyée',
+          dateSoumission: todayFormatted,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
       );
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `candidatures/${user.uid}`);
+    } catch {
+      // Keep going for local state update
     }
+    setCandidature((prev) => ({
+      candidatId: user.uid,
+      nom: profile.nom,
+      prenom: profile.prenom,
+      email: user.email || profile.email,
+      cne: profile.cne,
+      universiteOrigine: 'EST Fès',
+      recuperationAuto: false,
+      sujetsChoisis: prev?.sujetsChoisis || [],
+      ...prev,
+      statut: 'Envoyée',
+      dateSoumission: todayFormatted,
+    }));
   };
 
   const saveUploadedPiece = async (

@@ -8,11 +8,15 @@ import {
   FileCheck,
   ArrowLeft,
   ShoppingBag,
+  FileText,
+  Image as ImageIcon,
+  Film,
+  Edit2,
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { PRESELECTION_SLOTS, PieceSlotPreselection, SujetRecord } from '../types/cedoc';
-import { validateCandidateFile, uploadDossierFile } from '../utils/storageHelper';
+import { validateCandidateFile, uploadDossierFile, detectFileType } from '../utils/storageHelper';
 
 interface CartViewProps {
   onBackToHome: () => void;
@@ -36,7 +40,7 @@ export const CartView: React.FC<CartViewProps> = ({
     toggleSubjectSelection,
   } = useCart();
 
-  const { user, candidature, piecesMap, submitCandidatureFinale, saveUploadedPiece } = useAuth();
+  const { user, piecesMap, submitCandidatureFinale, saveUploadedPiece } = useAuth();
 
   const [showUploadStep, setShowUploadStep] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -50,7 +54,6 @@ export const CartView: React.FC<CartViewProps> = ({
       onOpenAuth('register');
       return;
     }
-    // Affiche l'interface de téléversement des documents
     setShowUploadStep(true);
   };
 
@@ -95,21 +98,54 @@ export const CartView: React.FC<CartViewProps> = ({
     }
   };
 
+  const renderFileTypeBadge = (fileName: string, mimeType?: string) => {
+    const type = detectFileType(fileName, mimeType);
+    if (type === 'PDF') {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-red-50 text-red-700 border border-red-200 shrink-0">
+          <FileText className="w-3 h-3" />
+          PDF
+        </span>
+      );
+    }
+    if (type === 'Image') {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+          <ImageIcon className="w-3 h-3" />
+          Image
+        </span>
+      );
+    }
+    if (type === 'Vidéo') {
+      return (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+          <Film className="w-3 h-3" />
+          Vidéo
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
+        Fichier
+      </span>
+    );
+  };
+
   return (
-    <div className="py-8">
-      <div className="desktop-container flex flex-col gap-6 max-w-4xl">
+    <div className="py-6">
+      <div className="desktop-container flex flex-col gap-5 max-w-[820px] mx-auto px-4">
         {/* Navigation retour */}
         <div className="flex items-center justify-between">
           <button
             type="button"
             onClick={onBackToHome}
-            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+            className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Retour aux sujets</span>
           </button>
 
-          <span className="text-sm font-bold text-slate-800">
+          <span className="text-xs font-bold text-slate-800">
             Panier ({cartItems.length}/{maxCapacity})
           </span>
         </div>
@@ -121,19 +157,19 @@ export const CartView: React.FC<CartViewProps> = ({
         )}
 
         {/* Liste des sujets du panier */}
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-4">
-          <h1 className="font-display font-bold text-lg text-slate-900">
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col gap-4">
+          <h1 className="font-display font-bold text-base text-slate-900">
             Sujets sélectionnés
           </h1>
 
           {cartItems.length === 0 ? (
-            <div className="py-12 text-center flex flex-col items-center gap-3">
-              <ShoppingBag className="w-10 h-10 text-slate-300 stroke-[1.5]" />
-              <p className="text-sm text-slate-600">Votre panier est vide.</p>
+            <div className="py-10 text-center flex flex-col items-center gap-2">
+              <ShoppingBag className="w-9 h-9 text-slate-300 stroke-[1.5]" />
+              <p className="text-xs text-slate-600">Votre panier est vide.</p>
               <button
                 type="button"
                 onClick={onBackToHome}
-                className="btn-secondary text-sm"
+                className="btn-secondary text-xs"
               >
                 Consulter les sujets
               </button>
@@ -146,7 +182,7 @@ export const CartView: React.FC<CartViewProps> = ({
                 return (
                   <div
                     key={sujet.id}
-                    className="py-3.5 flex items-center justify-between gap-4"
+                    className="py-3 flex items-center justify-between gap-4"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <button
@@ -164,11 +200,11 @@ export const CartView: React.FC<CartViewProps> = ({
                       <div className="min-w-0">
                         <span
                           onClick={() => onViewSubjectDetails(sujet)}
-                          className="font-semibold text-sm text-slate-900 hover:text-blue-600 cursor-pointer transition-colors line-clamp-1"
+                          className="font-semibold text-xs text-slate-900 hover:text-blue-600 cursor-pointer transition-colors line-clamp-1"
                         >
                           {sujet.intitule}
                         </span>
-                        <span className="text-xs text-slate-500 block">
+                        <span className="text-[11px] text-slate-500 block">
                           {sujet.discipline}
                         </span>
                       </div>
@@ -184,7 +220,7 @@ export const CartView: React.FC<CartViewProps> = ({
                         className="p-1.5 text-slate-400 hover:text-blue-600 rounded transition-colors"
                         title="Remplacer"
                       >
-                        <RefreshCw className="w-4 h-4" />
+                        <RefreshCw className="w-3.5 h-3.5" />
                       </button>
                       <button
                         type="button"
@@ -192,7 +228,7 @@ export const CartView: React.FC<CartViewProps> = ({
                         className="p-1.5 text-slate-400 hover:text-red-600 rounded transition-colors"
                         title="Supprimer"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -202,12 +238,12 @@ export const CartView: React.FC<CartViewProps> = ({
           )}
 
           {cartItems.length > 0 && !showUploadStep && (
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-end">
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
               <button
                 type="button"
                 onClick={handleEnvoyerCandidature}
                 disabled={selectedCount === 0}
-                className="btn-primary"
+                className="btn-primary text-xs h-[36px]"
               >
                 Envoyer candidature ({selectedCount})
               </button>
@@ -215,11 +251,11 @@ export const CartView: React.FC<CartViewProps> = ({
           )}
         </div>
 
-        {/* INTERFACE POUR SUBIR LOS DOCUMENTOS CONCERNIENTES (Dépôt des pièces) */}
+        {/* INTERFACE POUR TÉLÉVERSER / MODIFIER LES DOCUMENTS CONCERNÉS */}
         {showUploadStep && (
-          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col gap-4">
             <h2 className="font-display font-bold text-base text-slate-900">
-              Documents du dossier (PDF)
+              Documents du dossier
             </h2>
 
             <div className="flex flex-col divide-y divide-slate-100">
@@ -232,41 +268,63 @@ export const CartView: React.FC<CartViewProps> = ({
                     key={slot.slotId}
                     className="py-3 flex items-center justify-between gap-4"
                   >
-                    <div className="min-w-0">
-                      <span className="text-sm font-semibold text-slate-800 block">
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs font-semibold text-slate-800 block">
                         {slot.label}
                       </span>
                       {isUploaded && (
-                        <span className="text-xs text-emerald-600 flex items-center gap-1 mt-0.5">
-                          <FileCheck className="w-3.5 h-3.5" />
-                          {piece.fileName}
-                        </span>
+                        <div className="flex items-center gap-2 mt-1">
+                          {/* Indicateur explicite du type de fichier (PDF, Image, Vidéo) */}
+                          {renderFileTypeBadge(piece.fileName, piece.mimeType)}
+                          <span className="text-[11px] text-slate-600 truncate max-w-[260px]">
+                            {piece.fileName}
+                          </span>
+                        </div>
                       )}
                     </div>
 
-                    <label className="btn-sm-secondary cursor-pointer shrink-0">
-                      <Upload className="w-3.5 h-3.5 mr-1" />
-                      <span>{isUploaded ? 'Remplacer' : 'Téléverser'}</span>
-                      <input
-                        type="file"
-                        accept="application/pdf"
-                        className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) handleFileUpload(slot.slotId, slot.label, f);
-                        }}
-                      />
-                    </label>
+                    {/* Boutons d'action : Téléverser & Modifier toujours présent */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <label className="btn-sm-secondary text-xs h-[32px] px-3 cursor-pointer flex items-center gap-1.5">
+                        <Edit2 className="w-3 h-3" />
+                        <span>Modifier</span>
+                        <input
+                          type="file"
+                          accept="application/pdf,image/*,video/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleFileUpload(slot.slotId, slot.label, f);
+                          }}
+                        />
+                      </label>
+
+                      {!isUploaded && (
+                        <label className="btn-sm-primary text-xs h-[32px] px-3 cursor-pointer flex items-center gap-1.5">
+                          <Upload className="w-3 h-3" />
+                          <span>Téléverser</span>
+                          <input
+                            type="file"
+                            accept="application/pdf,image/*,video/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handleFileUpload(slot.slotId, slot.label, f);
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
                   </div>
                 );
               })}
             </div>
 
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => setShowUploadStep(false)}
-                className="btn-secondary text-xs"
+                className="btn-secondary text-xs h-[34px]"
               >
                 Retour aux choix
               </button>
@@ -275,7 +333,7 @@ export const CartView: React.FC<CartViewProps> = ({
                 type="button"
                 onClick={handleConfirmFinalSubmission}
                 disabled={busy}
-                className="btn-primary"
+                className="btn-primary text-xs h-[34px]"
               >
                 {busy ? 'Transmission...' : 'Confirmer et envoyer'}
               </button>

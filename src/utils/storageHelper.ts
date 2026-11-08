@@ -10,20 +10,32 @@ export interface ValidatedUploadResult {
   downloadUrl: string;
 }
 
+export function detectFileType(fileName: string, mimeType?: string): 'PDF' | 'Image' | 'Vidéo' | 'Fichier' {
+  const ext = fileName.toLowerCase().split('.').pop() || '';
+  if (ext === 'pdf' || mimeType?.includes('pdf')) return 'PDF';
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext) || mimeType?.startsWith('image/')) return 'Image';
+  if (['mp4', 'mov', 'avi', 'webm', 'mkv'].includes(ext) || mimeType?.startsWith('video/')) return 'Vidéo';
+  return 'Fichier';
+}
+
 export function validateCandidateFile(file: File): string | null {
-  const allowed = ALLOWED_MIME_TYPES as readonly string[];
   const extLower = file.name.toLowerCase();
   const validExt =
     extLower.endsWith('.pdf') ||
     extLower.endsWith('.jpg') ||
     extLower.endsWith('.jpeg') ||
-    extLower.endsWith('.png');
+    extLower.endsWith('.png') ||
+    extLower.endsWith('.webp') ||
+    extLower.endsWith('.mp4') ||
+    extLower.endsWith('.webm') ||
+    extLower.endsWith('.mov');
 
+  const allowed = ALLOWED_MIME_TYPES as readonly string[];
   if (!allowed.includes(file.type) && !validExt) {
-    return 'Format PDF, JPG ou PNG uniquement.';
+    return 'Format PDF, Image (JPG, PNG) ou Vidéo (MP4) uniquement.';
   }
   if (file.size <= 0 || file.size > MAX_FILE_SIZE_BYTES) {
-    return 'Taille maximale autorisée : 5 Mo.';
+    return 'Taille maximale autorisée : 10 Mo.';
   }
   return null;
 }
@@ -42,6 +54,8 @@ export async function uploadDossierFile(
       ? 'image/png'
       : safeFileName.toLowerCase().endsWith('.jpg') || safeFileName.toLowerCase().endsWith('.jpeg')
       ? 'image/jpeg'
+      : safeFileName.toLowerCase().endsWith('.mp4')
+      ? 'video/mp4'
       : 'application/pdf';
 
   const storagePath = `${rootFolder}/${ownerUid}/${slotId}/${safeFileName}`;
@@ -56,7 +70,6 @@ export async function uploadDossierFile(
     await Promise.race([uploadTask, timeoutPromise]);
     downloadUrl = await getDownloadURL(storageRef);
   } catch {
-    // Graceful fallback if Firebase Storage bucket is not yet initialized in console
     downloadUrl = '';
   }
 

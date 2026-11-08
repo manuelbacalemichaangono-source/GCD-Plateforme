@@ -5,5 +5,13 @@ export const CAMPAGNE_ACTUELLE = '2026-2027';
 
 export const SEED_ADMIN_EMAIL = 'aladinmonroe0@gmail.com';
 
-export const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 Mo
-export const ALLOWED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const;
+export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 Mo
+export const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+] as const;
