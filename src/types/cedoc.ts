@@ -26,6 +26,34 @@ export interface SujetRecord {
   laboratoire: string;
   statut: StatutSujet;
   prerequis?: string;
+  actif?: boolean;
+  ecarte?: boolean;
+}
+
+export interface DirecteurProfile {
+  id: string;
+  nom: string;
+  prenom: string;
+  nomComplet: string;
+  email: string;
+}
+
+export interface CandidaturePourDirecteur {
+  id: string;
+  candidatId: string;
+  candidatNom: string;
+  candidatPrenom: string;
+  candidatEmail: string;
+  candidatTelephone: string;
+  cne: string;
+  etablissementOrigine: string;
+  diplomeObtenu: string;
+  sujetId: string;
+  sujetIntitule: string;
+  dateDepot: string;
+  decisionDirecteur: 'En attente' | 'Retenue' | 'Rejetée';
+  motifRejet?: string;
+  pieces: Record<string, { fileName: string; type: string; downloadUrl?: string }>;
 }
 
 export interface LaboratoireRecord {

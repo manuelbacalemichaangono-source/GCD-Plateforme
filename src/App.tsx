@@ -5,6 +5,7 @@ import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { HomePage } from './components/HomePage';
 import { CandidateDashboard } from './components/CandidateDashboard';
+import { DirecteurDashboard } from './components/DirecteurDashboard';
 import { CartView } from './components/CartView';
 import { SubjectDetailModal } from './components/SubjectDetailModal';
 import { AuthModal } from './components/AuthModal';
@@ -52,7 +53,7 @@ class AppErrorBoundary extends React.Component<
 }
 
 const MainAppContent: React.FC = () => {
-  const { user, authReady } = useAuth();
+  const { user, directeurUser, activeRole, authReady } = useAuth();
 
   // Navigation pour visiteur : 'home' ou 'cart' (pleine interface, pas de modal)
   const [visitorView, setVisitorView] = useState<'home' | 'cart'>('home');
@@ -99,9 +100,15 @@ const MainAppContent: React.FC = () => {
     );
   }
 
+  // 1. ESPACE DU DIRECTEUR DE THÈSE (Exclusif, 3 onglets, zéro footer)
+  if (activeRole === 'directeur' || directeurUser) {
+    return <DirecteurDashboard />;
+  }
+
+  // 2. ESPACE DU CANDIDAT OU PORTAIL VISITEUR
   return (
     <div className="min-h-screen flex flex-col bg-[#F8FAFC] text-slate-900 font-sans">
-      {/* Header fixe */}
+      {/* Header fixe (public ou candidat) */}
       <Header onOpenAuth={handleOpenAuth} />
 
       {/* Corps principal : STRICTEMENT séparé entre Visiteur et Candidat */}
@@ -129,7 +136,7 @@ const MainAppContent: React.FC = () => {
         )}
       </main>
 
-      {/* PIED DE PAGE : UNIQUEMENT pour la vue visiteur (JAMAIS pour le candidat) */}
+      {/* PIED DE PAGE : UNIQUEMENT pour la vue visiteur (JAMAIS pour les espaces privés) */}
       {!user && <Footer />}
 
       {/* Modale Détails du sujet scientifique (Directeur uniquement sous la description, sans labo) */}
@@ -144,7 +151,7 @@ const MainAppContent: React.FC = () => {
         }}
       />
 
-      {/* Modale Authentification épurée */}
+      {/* Modale Authentification épurée (Double Rôle : Candidat & Directeur de Thèse) */}
       <AuthModal
         isOpen={authModal.isOpen}
         mode={authModal.mode}

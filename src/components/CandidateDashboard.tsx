@@ -31,8 +31,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
   // État profil
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [profileNom, setProfileNom] = useState(profile.nom || 'Micha');
-  const [profilePrenom, setProfilePrenom] = useState(profile.prenom || 'Manuel');
+  const [profileNom, setProfileNom] = useState(profile.nom || 'Tazi');
+  const [profilePrenom, setProfilePrenom] = useState(profile.prenom || 'Amine');
   const [profileTelephone, setProfileTelephone] = useState(profile.telephone || '+212 6 12 34 56 78');
   const [profileCne, setProfileCne] = useState(profile.cne || 'N134098712');
   const [profileEtablissement, setProfileEtablissement] = useState(
@@ -215,8 +215,26 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         <div className="py-6">
           <div className="desktop-container max-w-[540px] mx-auto px-4 flex flex-col gap-5">
             <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-6">
-              {/* EN-TÊTE DU PROFIL AVEC PHOTO DE PROFIL CLIQUABLE */}
-              <div className="flex flex-col items-center text-center gap-3 pb-5 border-b border-slate-100">
+              {/* EN-TÊTE DU PROFIL AVEC TITRE ET BOUTON MODIFIER */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h1 className="font-display font-bold text-base text-slate-900">
+                  Profil du Candidat
+                </h1>
+
+                {!isEditingProfile && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingProfile(true)}
+                    className="inline-flex items-center gap-1.5 btn-sm-secondary text-xs h-[34px] px-3.5"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    <span>Modifier le profil</span>
+                  </button>
+                )}
+              </div>
+
+              {/* PHOTO DE PROFIL CLIQUABLE */}
+              <div className="flex flex-col items-center text-center gap-3 pb-3 border-b border-slate-100">
                 <div className="relative group">
                   <label
                     htmlFor="avatar-upload"
@@ -259,9 +277,9 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 </div>
 
                 <div>
-                  <h1 className="font-display font-bold text-base text-slate-900 leading-tight">
+                  <h2 className="font-display font-bold text-base text-slate-900 leading-tight">
                     {profilePrenom} {profileNom}
-                  </h1>
+                  </h2>
                   <span className="text-xs text-slate-500 font-medium">
                     {profileCne || 'Étudiant candidat'} · {profileEtablissement}
                   </span>
@@ -304,17 +322,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   <div className="py-2.5 flex items-center justify-between">
                     <span className="text-slate-500 font-medium">Diplôme d’accès</span>
                     <span className="font-semibold text-slate-900">{profileDiplome}</span>
-                  </div>
-
-                  <div className="pt-4 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingProfile(true)}
-                      className="inline-flex items-center gap-1.5 btn-sm-secondary text-xs h-[34px] px-3.5"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                      <span>Modifier le profil</span>
-                    </button>
                   </div>
                 </div>
               ) : (

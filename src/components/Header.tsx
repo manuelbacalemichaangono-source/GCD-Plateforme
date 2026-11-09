@@ -115,11 +115,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAuth }) => {
 
             <div className="h-4 w-[1px] bg-slate-200" />
 
-            {/* Identifiant candidat */}
-            <span className="text-xs font-semibold text-slate-800">
-              {profile.prenom || 'Manuel'} {profile.nom || 'Micha'}
-            </span>
-
             <button
               type="button"
               onClick={logout}
