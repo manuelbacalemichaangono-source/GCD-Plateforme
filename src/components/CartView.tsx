@@ -38,6 +38,7 @@ export const CartView: React.FC<CartViewProps> = ({
     removeFromCart,
     startReplacing,
     toggleSubjectSelection,
+    clearCart,
   } = useCart();
 
   const { user, piecesMap, submitCandidatureFinale, saveUploadedPiece } = useAuth();
@@ -88,6 +89,7 @@ export const CartView: React.FC<CartViewProps> = ({
     setFeedback(null);
     try {
       await submitCandidatureFinale();
+      clearCart();
       if (onGoToProgression) {
         onGoToProgression();
       }

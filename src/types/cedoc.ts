@@ -36,6 +36,11 @@ export interface DirecteurProfile {
   prenom: string;
   nomComplet: string;
   email: string;
+  telephone?: string;
+  grade?: string;
+  etablissement?: string;
+  departement?: string;
+  avatarUrl?: string;
 }
 
 export interface CandidaturePourDirecteur {

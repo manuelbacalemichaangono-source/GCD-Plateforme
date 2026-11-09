@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Home as HomeIcon,
   Clock,
@@ -10,6 +10,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
 import { SujetRecord, TimelineStep } from '../types/cedoc';
 import { HomePage } from './HomePage';
 import { CartView } from './CartView';
@@ -26,6 +27,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   onOpenAuth,
 }) => {
   const { profile, candidature, updateProfileData } = useAuth();
+  const { clearCart, cartItems } = useCart();
   const [activeTab, setActiveTab] = useState<'home' | 'progression' | 'profil'>(initialTab);
   const [isViewingCart, setIsViewingCart] = useState(false);
 
@@ -72,6 +74,13 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
   // 4 étapes strictes de la timeline
   const isEnvoyee = candidature?.statut === 'Envoyée' || candidature?.statut === 'Présélectionné' || candidature?.statut === 'Convoqué' || candidature?.statut === 'Admis';
+
+  // Si la candidature est déjà envoyée, le panier se réinitialise strictement à zéro
+  useEffect(() => {
+    if (isEnvoyee && cartItems.length > 0) {
+      clearCart();
+    }
+  }, [isEnvoyee, cartItems.length, clearCart]);
 
   const timelineSteps: TimelineStep[] = [
     {

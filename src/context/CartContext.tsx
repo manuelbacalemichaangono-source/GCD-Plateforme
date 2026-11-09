@@ -26,34 +26,19 @@ const CartContext = createContext<CartContextValue | undefined>(undefined);
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [cartItems, setCartItems] = useState<SujetRecord[]>(() => {
+    // Purger tout résidu pour qu'au rafraîchissement de l'application aucun sujet n'ait "Dans le panier"
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed.slice(0, MAX_CART_ITEMS);
-        }
-      }
+      localStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(STORAGE_KEY);
     } catch {
       // Fallback
     }
     return [];
   });
 
-  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>(() => {
-    return cartItems.map((item) => item.id);
-  });
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
 
   const [replacingSubject, setReplacingSubject] = useState<SujetRecord | null>(null);
-
-  // Sync to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(cartItems));
-    } catch {
-      // Ignore storage quota
-    }
-  }, [cartItems]);
 
   // Keep selectedSubjectIds in sync when items are removed
   useEffect(() => {
@@ -139,6 +124,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCartItems([]);
     setSelectedSubjectIds([]);
     setReplacingSubject(null);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Ignore
+    }
   };
 
   const setCartFromExternal = (sujets: SujetRecord[]) => {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   BookOpen,
   Users,
@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   X,
   FileCheck,
+  Camera,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -51,11 +52,50 @@ export const DirecteurDashboard: React.FC = () => {
     error: null,
   });
 
-  // Profil du directeur (sans mention de laboratoire)
+  // Profil du directeur (identique au profil candidat, seules les données changent)
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [nom, setNom] = useState(directeurUser?.nom || 'El Mansouri');
-  const [prenom, setPrenom] = useState(directeurUser?.prenom || 'Karim');
-  const [email, setEmail] = useState(directeurUser?.email || 'k.elmansouri@usmba.ac.ma');
+  const [profileNom, setProfileNom] = useState(directeurUser?.nom || 'El Mansouri');
+  const [profilePrenom, setProfilePrenom] = useState(directeurUser?.prenom || 'Karim');
+  const [profileEmail, setProfileEmail] = useState(directeurUser?.email || 'k.elmansouri@usmba.ac.ma');
+  const [profileTelephone, setProfileTelephone] = useState(
+    directeurUser?.telephone || '+212 5 35 60 05 84'
+  );
+  const [profileGrade, setProfileGrade] = useState(
+    directeurUser?.grade || "Professeur de l'Enseignement Supérieur (PES)"
+  );
+  const [profileEtablissement, setProfileEtablissement] = useState(
+    directeurUser?.etablissement || 'EST Fès'
+  );
+  const [profileDepartement, setProfileDepartement] = useState(
+    directeurUser?.departement || 'Génie Informatique'
+  );
+  const [profileAvatar, setProfileAvatar] = useState(directeurUser?.avatarUrl || '');
+
+  useEffect(() => {
+    if (directeurUser) {
+      setProfileNom(directeurUser.nom);
+      setProfilePrenom(directeurUser.prenom);
+      setProfileEmail(directeurUser.email);
+      if (directeurUser.telephone) setProfileTelephone(directeurUser.telephone);
+      if (directeurUser.grade) setProfileGrade(directeurUser.grade);
+      if (directeurUser.etablissement) setProfileEtablissement(directeurUser.etablissement);
+      if (directeurUser.departement) setProfileDepartement(directeurUser.departement);
+      if (directeurUser.avatarUrl !== undefined) setProfileAvatar(directeurUser.avatarUrl);
+    }
+  }, [directeurUser]);
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const url = reader.result as string;
+        setProfileAvatar(url);
+        updateDirecteurProfile({ avatarUrl: url });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // Filtrer les sujets assignés à ce professeur
   const mesSujets = useMemo(() => {
@@ -135,7 +175,16 @@ export const DirecteurDashboard: React.FC = () => {
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    updateDirecteurProfile({ nom, prenom, email });
+    updateDirecteurProfile({
+      nom: profileNom,
+      prenom: profilePrenom,
+      email: profileEmail,
+      telephone: profileTelephone,
+      grade: profileGrade,
+      etablissement: profileEtablissement,
+      departement: profileDepartement,
+      avatarUrl: profileAvatar,
+    });
     setIsEditingProfile(false);
   };
 
@@ -366,100 +415,225 @@ export const DirecteurDashboard: React.FC = () => {
             </div>
           )}
 
-          {/* C. ONGLET MON PROFIL (SANS MENTION DE LABORATOIRE) */}
+          {/* C. ONGLET MON PROFIL : IDENTIQUE AU PROFIL CANDIDAT, SEULES LES DONNÉES CHANGENT */}
           {activeTab === 'profil' && (
-            <div className="max-w-[540px] mx-auto bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-6">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <h1 className="font-display font-bold text-base text-slate-900">
-                  Profil du Directeur de Thèse
-                </h1>
+            <div className="py-6">
+              <div className="desktop-container max-w-[820px] mx-auto px-4 flex flex-col gap-5">
+                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-6">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <h1 className="font-display font-bold text-base text-slate-900">
+                      Mon profil
+                    </h1>
 
-                {!isEditingProfile && (
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingProfile(true)}
-                    className="inline-flex items-center gap-1.5 btn-sm-secondary text-xs h-[34px] px-3.5"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                    <span>Modifier le profil</span>
-                  </button>
-                )}
-              </div>
-
-              {!isEditingProfile ? (
-                /* Mode consultation en colonne simple (aucun laboratoire) */
-                <div className="flex flex-col divide-y divide-slate-100 text-xs">
-                  <div className="py-3 flex items-center justify-between">
-                    <span className="text-slate-500 font-medium">Nom</span>
-                    <span className="font-semibold text-slate-900">{nom}</span>
+                    {!isEditingProfile && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingProfile(true)}
+                        className="inline-flex items-center gap-1.5 btn-sm-secondary text-xs h-[34px] px-3.5"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        <span>Modifier le profil</span>
+                      </button>
+                    )}
                   </div>
 
-                  <div className="py-3 flex items-center justify-between">
-                    <span className="text-slate-500 font-medium">Prénom</span>
-                    <span className="font-semibold text-slate-900">{prenom}</span>
+                  {/* PHOTO DE PROFIL CLIQUABLE */}
+                  <div className="flex flex-col items-center text-center gap-3 pb-3 border-b border-slate-100">
+                    <div className="relative group">
+                      <label
+                        htmlFor="avatar-upload-directeur"
+                        className="w-20 h-20 rounded-full overflow-hidden bg-slate-100 border-2 border-slate-200 flex items-center justify-center cursor-pointer transition-all hover:border-blue-500 shadow-xs block relative"
+                        title="Cliquer pour changer la photo de profil"
+                      >
+                        {profileAvatar ? (
+                          <img
+                            src={profileAvatar}
+                            alt="Photo de profil"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-xl">
+                            {profilePrenom.charAt(0)}
+                            {profileNom.charAt(0)}
+                          </div>
+                        )}
+
+                        <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                          <Camera className="w-5 h-5" />
+                        </div>
+                      </label>
+
+                      <input
+                        id="avatar-upload-directeur"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleAvatarChange}
+                      />
+
+                      <label
+                        htmlFor="avatar-upload-directeur"
+                        className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center cursor-pointer shadow-xs hover:bg-blue-700 transition-colors"
+                        title="Ajouter une photo"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                      </label>
+                    </div>
+
+                    <div>
+                      <h2 className="font-display font-bold text-base text-slate-900 leading-tight">
+                        Pr. {profilePrenom} {profileNom}
+                      </h2>
+                      <span className="text-xs text-slate-500 font-medium">
+                        {profileGrade} · {profileEtablissement}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="py-3 flex items-center justify-between">
-                    <span className="text-slate-500 font-medium">Courriel institutionnel</span>
-                    <span className="font-semibold text-slate-900">{email}</span>
-                  </div>
+                  {/* INFORMATIONS ESSENTIELLES EN FORME DE COLONNE UNIQUE */}
+                  {!isEditingProfile ? (
+                    <div className="flex flex-col divide-y divide-slate-100 text-xs">
+                      <div className="py-2.5 flex items-center justify-between">
+                        <span className="text-slate-500 font-medium">Nom</span>
+                        <span className="font-semibold text-slate-900">{profileNom}</span>
+                      </div>
+
+                      <div className="py-2.5 flex items-center justify-between">
+                        <span className="text-slate-500 font-medium">Prénom</span>
+                        <span className="font-semibold text-slate-900">{profilePrenom}</span>
+                      </div>
+
+                      <div className="py-2.5 flex items-center justify-between">
+                        <span className="text-slate-500 font-medium">Courriel institutionnel</span>
+                        <span className="font-semibold text-slate-900">{profileEmail}</span>
+                      </div>
+
+                      <div className="py-2.5 flex items-center justify-between">
+                        <span className="text-slate-500 font-medium">Téléphone</span>
+                        <span className="font-semibold text-slate-900">{profileTelephone}</span>
+                      </div>
+
+                      <div className="py-2.5 flex items-center justify-between">
+                        <span className="text-slate-500 font-medium">Grade / Titre</span>
+                        <span className="font-semibold text-slate-900">{profileGrade}</span>
+                      </div>
+
+                      <div className="py-2.5 flex items-center justify-between">
+                        <span className="text-slate-500 font-medium">Établissement</span>
+                        <span className="font-semibold text-slate-900">{profileEtablissement}</span>
+                      </div>
+
+                      <div className="py-2.5 flex items-center justify-between">
+                        <span className="text-slate-500 font-medium">Département</span>
+                        <span className="font-semibold text-slate-900">{profileDepartement}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    /* FORMULAIRE D'ÉDITION EN FORME DE COLONNE */
+                    <form onSubmit={handleSaveProfile} className="flex flex-col gap-3.5 text-xs">
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Nom
+                        </label>
+                        <input
+                          type="text"
+                          value={profileNom}
+                          onChange={(e) => setProfileNom(e.target.value)}
+                          className="form-input text-xs h-[36px]"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Prénom
+                        </label>
+                        <input
+                          type="text"
+                          value={profilePrenom}
+                          onChange={(e) => setProfilePrenom(e.target.value)}
+                          className="form-input text-xs h-[36px]"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Courriel institutionnel
+                        </label>
+                        <input
+                          type="email"
+                          value={profileEmail}
+                          onChange={(e) => setProfileEmail(e.target.value)}
+                          className="form-input text-xs h-[36px]"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Téléphone
+                        </label>
+                        <input
+                          type="text"
+                          value={profileTelephone}
+                          onChange={(e) => setProfileTelephone(e.target.value)}
+                          className="form-input text-xs h-[36px]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Grade / Titre
+                        </label>
+                        <input
+                          type="text"
+                          value={profileGrade}
+                          onChange={(e) => setProfileGrade(e.target.value)}
+                          className="form-input text-xs h-[36px]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Établissement
+                        </label>
+                        <input
+                          type="text"
+                          value={profileEtablissement}
+                          onChange={(e) => setProfileEtablissement(e.target.value)}
+                          className="form-input text-xs h-[36px]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Département
+                        </label>
+                        <input
+                          type="text"
+                          value={profileDepartement}
+                          onChange={(e) => setProfileDepartement(e.target.value)}
+                          className="form-input text-xs h-[36px]"
+                        />
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingProfile(false)}
+                          className="btn-secondary text-xs h-[34px] px-3"
+                        >
+                          Annuler
+                        </button>
+                        <button type="submit" className="btn-primary text-xs h-[34px] px-3.5">
+                          Enregistrer
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
-              ) : (
-                /* Formulaire de modification */
-                <form onSubmit={handleSaveProfile} className="flex flex-col gap-3.5 text-xs">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Nom
-                    </label>
-                    <input
-                      type="text"
-                      value={nom}
-                      onChange={(e) => setNom(e.target.value)}
-                      className="form-input text-xs h-[36px]"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Prénom
-                    </label>
-                    <input
-                      type="text"
-                      value={prenom}
-                      onChange={(e) => setPrenom(e.target.value)}
-                      className="form-input text-xs h-[36px]"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Courriel institutionnel
-                    </label>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="form-input text-xs h-[36px]"
-                      required
-                    />
-                  </div>
-
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingProfile(false)}
-                      className="btn-secondary text-xs h-[34px] px-3"
-                    >
-                      Annuler
-                    </button>
-                    <button type="submit" className="btn-primary text-xs h-[34px] px-3.5">
-                      Enregistrer
-                    </button>
-                  </div>
-                </form>
-              )}
+              </div>
             </div>
           )}
         </div>

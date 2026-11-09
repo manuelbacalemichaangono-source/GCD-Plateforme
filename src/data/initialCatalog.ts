@@ -1,4 +1,4 @@
-import { LaboratoireRecord, SujetRecord } from '../types/cedoc';
+import { DirecteurProfile, LaboratoireRecord, SujetRecord } from '../types/cedoc';
 
 export const SPECIALITES_INITIALES: string[] = [
   'Génie logiciel',
@@ -410,17 +410,55 @@ export const INITIAL_SUJETS: SujetRecord[] = [
   },
 ];
 
-export const INITIAL_DIRECTEURS: Array<{
-  id: string;
-  nom: string;
-  prenom: string;
-  nomComplet: string;
-  email: string;
-}> = [
-  { id: 'dir_karim', prenom: 'Karim', nom: 'El Mansouri', nomComplet: 'Pr. Karim El Mansouri', email: 'k.elmansouri@usmba.ac.ma' },
-  { id: 'dir_nadia', prenom: 'Nadia', nom: 'Bennani', nomComplet: 'Pr. Nadia Bennani', email: 'n.bennani@usmba.ac.ma' },
-  { id: 'dir_rachid', prenom: 'Rachid', nom: 'Chraibi', nomComplet: 'Pr. Rachid Chraibi', email: 'r.chraibi@usmba.ac.ma' },
-  { id: 'dir_youssef', prenom: 'Youssef', nom: 'Tazi', nomComplet: 'Pr. Youssef Tazi', email: 'y.tazi@usmba.ac.ma' },
+export const INITIAL_DIRECTEURS: Array<DirecteurProfile> = [
+  {
+    id: 'dir_karim',
+    prenom: 'Karim',
+    nom: 'El Mansouri',
+    nomComplet: 'Pr. Karim El Mansouri',
+    email: 'k.elmansouri@usmba.ac.ma',
+    telephone: '+212 5 35 60 05 84',
+    grade: "Professeur de l'Enseignement Supérieur (PES)",
+    etablissement: 'EST Fès',
+    departement: 'Génie Informatique',
+    avatarUrl: '',
+  },
+  {
+    id: 'dir_nadia',
+    prenom: 'Nadia',
+    nom: 'Bennani',
+    nomComplet: 'Pr. Nadia Bennani',
+    email: 'n.bennani@usmba.ac.ma',
+    telephone: '+212 5 35 60 05 85',
+    grade: 'Professeur Habilité (PH)',
+    etablissement: 'EST Fès',
+    departement: 'Génie Informatique',
+    avatarUrl: '',
+  },
+  {
+    id: 'dir_rachid',
+    prenom: 'Rachid',
+    nom: 'Chraibi',
+    nomComplet: 'Pr. Rachid Chraibi',
+    email: 'r.chraibi@usmba.ac.ma',
+    telephone: '+212 5 35 60 05 86',
+    grade: "Professeur de l'Enseignement Supérieur (PES)",
+    etablissement: 'EST Fès',
+    departement: 'Mathématiques & Informatique',
+    avatarUrl: '',
+  },
+  {
+    id: 'dir_youssef',
+    prenom: 'Youssef',
+    nom: 'Tazi',
+    nomComplet: 'Pr. Youssef Tazi',
+    email: 'y.tazi@usmba.ac.ma',
+    telephone: '+212 5 35 60 05 87',
+    grade: 'Professeur Assistant (PA)',
+    etablissement: 'EST Fès',
+    departement: 'Génie Informatique',
+    avatarUrl: '',
+  },
 ];
 
 export const INITIAL_CANDIDATURES_DIRECTEUR: Array<{

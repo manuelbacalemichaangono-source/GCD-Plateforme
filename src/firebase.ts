@@ -191,12 +191,15 @@ export function translateFirebaseAuthError(error: unknown): string {
     case 'auth/too-many-requests':
       return 'Trop de tentatives. Réessayez plus tard.';
     case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
       return 'Fenêtre de connexion fermée.';
     case 'auth/popup-blocked':
       return 'Autorisez les fenêtres pop-up pour continuer avec Google.';
+    case 'auth/unauthorized-domain':
+      return 'Domaine d’exécution en cours d’autorisation. Réessayez ou utilisez un compte candidat.';
     case 'auth/operation-not-allowed':
-      return 'Utilisez le bouton Continuer avec Google ci-dessous.';
+      return 'Le fournisseur d’authentification n’est pas activé.';
     default:
-      return 'Une erreur est survenue.';
+      return 'Une erreur est survenue lors de l’authentification.';
   }
 }
