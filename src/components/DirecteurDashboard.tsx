@@ -24,6 +24,7 @@ export const DirecteurDashboard: React.FC = () => {
     sujetsList,
     toggleSujetActif,
     ecarterSujet,
+    retablirSujet,
     candidaturesDirecteurList,
     deciderCandidatureDirecteur,
     updateDirecteurProfile,
@@ -306,17 +307,19 @@ export const DirecteurDashboard: React.FC = () => {
                             <>
                               {/* CONTRÔLE 1 : L'INTERRUPTEUR (Switch toggle interactif) */}
                               <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-1.5 px-3">
-                                <span className="text-[11px] font-semibold text-slate-700">
+                                <span className="text-xs font-semibold text-slate-700">
                                   {isActif ? 'Candidatures ouvertes' : 'Candidatures suspendues'}
                                 </span>
 
                                 <button
                                   type="button"
+                                  role="switch"
+                                  aria-checked={isActif}
                                   onClick={() => toggleSujetActif(sujet.id)}
                                   className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                                     isActif ? 'bg-blue-600' : 'bg-slate-300'
                                   }`}
-                                  title={isActif ? 'Désactiver la réception' : 'Activer la réception'}
+                                  title={isActif ? 'Désactiver la réception des candidatures' : 'Activer la réception des candidatures'}
                                 >
                                   <span
                                     className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
@@ -338,9 +341,19 @@ export const DirecteurDashboard: React.FC = () => {
                               </button>
                             </>
                           ) : (
-                            <span className="text-xs text-slate-400 italic bg-slate-100 px-3 py-1.5 rounded-lg">
-                              Sujet écarté pour ce cycle
-                            </span>
+                            <div className="flex items-center gap-2 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg">
+                              <span className="text-xs text-slate-500 italic">
+                                Sujet écarté pour ce cycle
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => retablirSujet(sujet.id)}
+                                className="text-xs text-blue-600 hover:text-blue-800 font-semibold underline ml-1 cursor-pointer"
+                                title="Rétablir ce sujet dans ma liste"
+                              >
+                                Rétablir
+                              </button>
+                            </div>
                           )}
                         </div>
                       </div>

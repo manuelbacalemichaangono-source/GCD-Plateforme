@@ -67,6 +67,7 @@ interface AuthContextValue {
   updateDirecteurProfile: (data: Partial<DirecteurProfile>) => void;
   toggleSujetActif: (sujetId: string) => void;
   ecarterSujet: (sujetId: string) => void;
+  retablirSujet: (sujetId: string) => void;
   deciderCandidatureDirecteur: (candidatureId: string, decision: 'Retenue' | 'Rejetée', motif?: string) => void;
   annulerCandidature: (candId: string, sujetId: string) => void;
   saveCandidatureDossier: (
@@ -545,6 +546,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   };
 
+  const retablirSujet = (sujetId: string) => {
+    setSujetsList((prev) =>
+      prev.map((s) => (s.id === sujetId ? { ...s, ecarte: false } : s))
+    );
+  };
+
   // Décision Directeur sur une candidature (Retenue / Rejetée)
   const deciderCandidatureDirecteur = (
     candidatureId: string,
@@ -921,6 +928,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateDirecteurProfile,
         toggleSujetActif,
         ecarterSujet,
+        retablirSujet,
         deciderCandidatureDirecteur,
         annulerCandidature,
         saveCandidatureDossier,
