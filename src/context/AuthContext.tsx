@@ -13,6 +13,7 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
   onSnapshot,
   serverTimestamp,
 } from 'firebase/firestore';
@@ -97,6 +98,7 @@ interface AuthContextValue {
   ) => Promise<void>;
   deleteUploadedPiece: (slotId: PieceSlotPreselection) => Promise<void>;
   markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
   logout: () => Promise<void>;
 }
 
@@ -686,17 +688,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Annuler une candidature envoyée
-  const annulerCandidature = (candId: string, sujetId: string) => {
-    // 1. Retirer de la liste des directeurs
+  // Annuler et supprimer définitivement une candidature envoyée
+  const annulerCandidature = async (candId: string, sujetId: string) => {
+    const userEmail = (user?.email || profile.email).trim().toLowerCase();
+
+    // 1. Récupérer le nom du sujet pour la notification
+    let targetIntitule = 'Sujet doctoral';
+    const foundSujet = sujetsList.find((s) => s.id === sujetId);
+    if (foundSujet) {
+      targetIntitule = foundSujet.intitule;
+    }
+
+    // 2. Retirer de la liste globale des directeurs
     setCandidaturesDirecteurList((prev) =>
-      prev.filter((c) => !(c.id === candId || (c.sujetId === sujetId && c.candidatEmail.toLowerCase() === (user?.email || profile.email).toLowerCase())))
+      prev.filter((c) => {
+        if (candId && c.id === candId) return false;
+        if (sujetId && c.sujetId === sujetId && c.candidatEmail.trim().toLowerCase() === userEmail) {
+          return false;
+        }
+        return true;
+      })
     );
 
-    // 2. Mettre à jour l'état local du candidat
+    // 3. Mettre à jour l'état local du candidat
     setCandidature((prev) => {
       if (!prev) return null;
+      if (prev.sujetsChoisis) {
+        const found = prev.sujetsChoisis.find((s) => s.id === sujetId);
+        if (found) targetIntitule = found.intitule;
+      }
       const remainingSujets = (prev.sujetsChoisis || []).filter((s) => s.id !== sujetId);
+      if (remainingSujets.length === 0) {
+        return null;
+      }
       return {
         ...prev,
         sujetsChoisis: remainingSujets,
@@ -704,27 +728,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     });
 
-    // 3. Réactiver le sujet s'il était attribué à ce candidat
+    // 4. Réactiver le sujet dans le catalogue public (libérer la place pour d'autres candidats)
     setSujetsList((prev) =>
       prev.map((s) =>
-        s.id === sujetId && s.candidatRetenuEmail?.toLowerCase() === (user?.email || profile.email).toLowerCase()
-          ? { ...s, attribue: false, statut: 'Publié' as any, candidatRetenuNom: undefined, candidatRetenuEmail: undefined }
+        s.id === sujetId
+          ? {
+              ...s,
+              attribue: false,
+              statut: 'Publié' as any,
+              candidatRetenuNom: undefined,
+              candidatRetenuEmail: undefined,
+            }
           : s
       )
     );
 
-    // 4. Notification
+    // 5. Synchroniser avec Firestore si l'utilisateur est connecté
+    if (user) {
+      try {
+        const candRef = doc(db, 'candidatures', user.uid);
+        const snap = await getDoc(candRef);
+        if (snap.exists()) {
+          const currentData = snap.data();
+          const currentSujets: any[] = currentData.sujetsChoisis || [];
+          const remainingSujets = currentSujets.filter((s: any) => s.id !== sujetId);
+          if (remainingSujets.length === 0) {
+            await deleteDoc(candRef);
+          } else {
+            await updateDoc(candRef, {
+              sujetsChoisis: remainingSujets,
+              updatedAt: serverTimestamp(),
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Erreur synchronisation suppression Firestore:', e);
+      }
+    }
+
+    // 6. Enregistrer immédiatement dans le Journal des notifications
     setCandidateNotifications((prev) => [
       {
         id: 'notif_annulee_' + Date.now(),
-        title: 'Candidature annulée',
-        detail: 'Votre candidature pour ce sujet a été annulée avec succès et retirée de la liste du directeur.',
+        title: 'Candidature annulée et supprimée',
+        detail: `Votre candidature pour le sujet « ${targetIntitule} » a été supprimée avec succès. Le sujet a été libéré dans le catalogue officiel.`,
         date: 'À l’instant',
         type: 'info',
         read: false,
       },
       ...prev,
     ]);
+  };
+
+  const markAllNotificationsRead = () => {
+    setCandidateNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
   const saveCandidatureDossier = async (
@@ -990,6 +1047,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         saveUploadedPiece,
         deleteUploadedPiece,
         markNotificationRead,
+        markAllNotificationsRead,
         logout,
       }}
     >

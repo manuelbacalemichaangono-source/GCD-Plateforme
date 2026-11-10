@@ -502,14 +502,27 @@ export const DirecteurDashboard: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Bouton pour ouvrir la fiche du candidat */}
-                        <button
-                          type="button"
-                          onClick={() => setSelectedCandidatId(cand.id)}
-                          className="btn-secondary text-xs h-[36px] px-4 shrink-0 whitespace-nowrap font-semibold"
-                        >
-                          Ouvrir la fiche
-                        </button>
+                        {/* Boutons d'action */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {cand.decisionDirecteur !== 'Retenue' && cand.decisionDirecteur !== 'Rejetée' && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenConvocationModal(cand)}
+                              className="inline-flex items-center gap-1.5 px-3.5 h-[36px] rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors shadow-2xs"
+                              title="Retenir ce candidat et programmer l'entretien"
+                            >
+                              <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                              <span>Retenir</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCandidatId(cand.id)}
+                            className="btn-secondary text-xs h-[36px] px-3.5 shrink-0 whitespace-nowrap font-semibold"
+                          >
+                            Ouvrir la fiche
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -836,9 +849,10 @@ export const DirecteurDashboard: React.FC = () => {
                     type="button"
                     onClick={() => handleOpenConvocationModal(selectedCandidature)}
                     className="inline-flex items-center gap-1.5 px-5 h-[38px] rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors shadow-xs"
+                    title="Valider et retenir le candidat pour l’entretien scientifique"
                   >
                     <Check className="w-4 h-4 stroke-[2.5]" />
-                    <span>Retenir pour l’entretien</span>
+                    <span>Retenir</span>
                   </button>
                 </>
               ) : (

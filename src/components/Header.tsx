@@ -34,34 +34,7 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
         </div>
 
-        {/* Au centre : Strictement 2 liens de navigation (Recherche de sujets & Calendrier) */}
-        {onSelectSection && (
-          <nav className="flex items-center gap-6 sm:gap-8">
-            <button
-              type="button"
-              onClick={() => onSelectSection('recherche')}
-              className={`text-xs sm:text-sm font-semibold transition-colors relative py-1.5 ${
-                activeSection === 'recherche'
-                  ? 'text-slate-900 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-slate-900'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              Recherche de sujets
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onSelectSection('calendrier')}
-              className={`text-xs sm:text-sm font-semibold transition-colors relative py-1.5 ${
-                activeSection === 'calendrier'
-                  ? 'text-slate-900 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-slate-900'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              Calendrier
-            </button>
-          </nav>
-        )}
+        {/* Au centre : menubar épuré, les liens de navigation visiteur sont déplacés dans le header du body */}
 
         {/* À droite : Dépend de l'état connecté ou visiteur */}
         {!user ? (

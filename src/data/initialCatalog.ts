@@ -1,4 +1,4 @@
-import { DirecteurProfile, LaboratoireRecord, SujetRecord } from '../types/cedoc';
+import { CandidaturePourDirecteur, DirecteurProfile, LaboratoireRecord, SujetRecord } from '../types/cedoc';
 
 export const SPECIALITES_INITIALES: string[] = [
   'Génie logiciel',
@@ -461,22 +461,5 @@ export const INITIAL_DIRECTEURS: Array<DirecteurProfile> = [
   },
 ];
 
-export const INITIAL_CANDIDATURES_DIRECTEUR: Array<{
-  id: string;
-  candidatId: string;
-  candidatNom: string;
-  candidatPrenom: string;
-  candidatEmail: string;
-  candidatTelephone: string;
-  cne: string;
-  etablissementOrigine: string;
-  diplomeObtenu: string;
-  sujetId: string;
-  sujetIntitule: string;
-  directeurNom: string;
-  dateDepot: string;
-  decisionDirecteur: 'En attente' | 'Retenue' | 'Rejetée';
-  motifRejet?: string;
-  pieces: Record<string, { fileName: string; type: string; downloadUrl?: string; sizeFormatted?: string; dateFormatted?: string; previewUrl?: string }>;
-}> = [];
+export const INITIAL_CANDIDATURES_DIRECTEUR: CandidaturePourDirecteur[] = [];
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Search, Calendar } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 import { Header } from './components/Header';
@@ -132,13 +133,59 @@ const MainAppContent: React.FC = () => {
               onOpenAuth={handleOpenAuth}
               onViewSubjectDetails={handleViewSubjectDetails}
             />
-          ) : activeSection === 'calendrier' ? (
-            <CalendrierView onBackToRecherche={() => setActiveSection('recherche')} />
           ) : (
-            <HomePage
-              onViewSubjectDetails={handleViewSubjectDetails}
-              onOpenCart={() => setVisitorView('cart')}
-            />
+            <div className="flex flex-col">
+              {/* Header du body dans la vue visiteur */}
+              <div className="bg-white border-b border-slate-200 shadow-2xs">
+                <div className="desktop-container max-w-[820px] mx-auto px-4 flex items-center justify-between h-[52px]">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">
+                      Portail :
+                    </span>
+                    <div className="inline-flex items-center p-1 bg-slate-100 rounded-lg">
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection('recherche')}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                          activeSection === 'recherche'
+                            ? 'bg-white text-slate-900 shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Search className="w-3.5 h-3.5" />
+                        <span>Recherche de sujets</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection('calendrier')}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                          activeSection === 'calendrier'
+                            ? 'bg-white text-slate-900 shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>Calendrier</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <span className="text-[11px] text-slate-500 font-medium hidden md:inline">
+                    Campagne doctorale 2026/2027 · CEDoc EST Fès
+                  </span>
+                </div>
+              </div>
+
+              {activeSection === 'calendrier' ? (
+                <CalendrierView onBackToRecherche={() => setActiveSection('recherche')} />
+              ) : (
+                <HomePage
+                  onViewSubjectDetails={handleViewSubjectDetails}
+                  onOpenCart={() => setVisitorView('cart')}
+                />
+              )}
+            </div>
           )
         ) : (
           /* VUE CANDIDAT : Navigation inférieure, zéro footer */

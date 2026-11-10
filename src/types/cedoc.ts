@@ -9,6 +9,7 @@ export type StatutCandidature =
   | 'Présélectionné'
   | 'Non présélectionné'
   | 'Convoqué'
+  | 'Retenu'
   | 'Admis'
   | 'Non admis';
 
