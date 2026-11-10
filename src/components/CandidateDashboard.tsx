@@ -1,22 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import {
   Home as HomeIcon,
-  Clock,
+  FileText,
   User as UserIcon,
   Check,
-  X,
   Edit2,
   Camera,
-  CheckCircle2,
+  Trash2,
+  Bell,
+  Calendar,
+  UserCheck,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
-import { SujetRecord, TimelineStep } from '../types/cedoc';
+import { SujetRecord } from '../types/cedoc';
 import { HomePage } from './HomePage';
 import { CartView } from './CartView';
 
 interface CandidateDashboardProps {
-  initialTab?: 'home' | 'progression' | 'profil';
+  initialTab?: 'home' | 'candidature' | 'profil';
   onViewSubjectDetails: (sujet: SujetRecord) => void;
   onOpenAuth: (mode: 'login' | 'register') => void;
 }
@@ -26,24 +30,47 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   onViewSubjectDetails,
   onOpenAuth,
 }) => {
-  const { profile, candidature, updateProfileData } = useAuth();
+  const {
+    user,
+    profile,
+    candidature,
+    candidaturesDirecteurList,
+    candidateNotifications,
+    sujetsList,
+    annulerCandidature,
+    updateProfileData,
+  } = useAuth();
+
   const { clearCart, cartItems } = useCart();
-  const [activeTab, setActiveTab] = useState<'home' | 'progression' | 'profil'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'home' | 'candidature' | 'profil'>(initialTab);
   const [isViewingCart, setIsViewingCart] = useState(false);
 
   // État profil
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [profileNom, setProfileNom] = useState(profile.nom || 'Tazi');
-  const [profilePrenom, setProfilePrenom] = useState(profile.prenom || 'Amine');
-  const [profileTelephone, setProfileTelephone] = useState(profile.telephone || '+212 6 12 34 56 78');
-  const [profileCne, setProfileCne] = useState(profile.cne || 'N134098712');
+  const [profileNom, setProfileNom] = useState(profile.nom || 'Monroe');
+  const [profilePrenom, setProfilePrenom] = useState(profile.prenom || 'Aladin');
+  const [profileTelephone, setProfileTelephone] = useState(profile.telephone || '+212 6 61 72 83 94');
+  const [profileCne, setProfileCne] = useState(profile.cne || 'N138091823');
   const [profileEtablissement, setProfileEtablissement] = useState(
     profile.etablissementOrigine || 'EST Fès'
   );
   const [profileDiplome, setProfileDiplome] = useState(
-    profile.diplomeObtenu || 'Master en Informatique'
+    profile.diplomeObtenu || 'Master en Informatique et Systèmes Distribués'
   );
   const [profileAvatar, setProfileAvatar] = useState(profile.avatarUrl || '');
+
+  // Sujets avec description développée dans l'historique
+  const [expandedSujetIds, setExpandedSujetIds] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setProfileNom(profile.nom);
+    setProfilePrenom(profile.prenom);
+    setProfileTelephone(profile.telephone);
+    setProfileCne(profile.cne);
+    setProfileEtablissement(profile.etablissementOrigine);
+    setProfileDiplome(profile.diplomeObtenu);
+    setProfileAvatar(profile.avatarUrl || '');
+  }, [profile]);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -72,61 +99,49 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     setIsEditingProfile(false);
   };
 
-  // 4 étapes strictes de la timeline
-  const isEnvoyee = candidature?.statut === 'Envoyée' || candidature?.statut === 'Présélectionné' || candidature?.statut === 'Convoqué' || candidature?.statut === 'Admis';
+  // Liste des candidatures transmises par ce candidat
+  const candidateEmail = (user?.email || profile.email).trim().toLowerCase();
+  const mySentCandidatures = candidaturesDirecteurList.filter(
+    (c) => c.candidatEmail.trim().toLowerCase() === candidateEmail
+  );
 
-  // Si la candidature est déjà envoyée, le panier se réinitialise strictement à zéro
-  useEffect(() => {
-    if (isEnvoyee && cartItems.length > 0) {
-      clearCart();
-    }
-  }, [isEnvoyee, cartItems.length, clearCart]);
+  const isEnvoyee = mySentCandidatures.length > 0 || (!!candidature && candidature.statut !== 'En dépôt');
+  const hasRetenue = mySentCandidatures.some((c) => c.decisionDirecteur === 'Retenue');
+  const allRejetees = mySentCandidatures.length > 0 && mySentCandidatures.every((c) => c.decisionDirecteur === 'Rejetée');
 
-  const timelineSteps: TimelineStep[] = [
-    {
-      id: 'depot',
-      title: 'Candidature envoyée',
-      subtitle: '',
-      state: isEnvoyee ? 'validee' : 'en_attente',
-      dateInfo: candidature?.dateSoumission || '',
-    },
-    {
-      id: 'precontrole',
-      title: 'Pré-contrôle administratif',
-      subtitle: '',
-      state:
-        candidature?.statut === 'Présélectionné' ||
-        candidature?.statut === 'Convoqué' ||
-        candidature?.statut === 'Admis'
-          ? 'validee'
-          : candidature?.statut === 'Non présélectionné' || candidature?.statut === 'Incomplet'
-          ? 'action_requise'
-          : 'en_attente',
-      dateInfo: '',
-    },
-    {
-      id: 'evaluation',
-      title: 'Évaluation scientifique',
-      subtitle: '',
-      state:
-        candidature?.statut === 'Convoqué' || candidature?.statut === 'Admis'
-          ? 'validee'
-          : candidature?.statut === 'Non admis'
-          ? 'action_requise'
-          : 'en_attente',
-      dateInfo: '',
-    },
-    {
-      id: 'convocation',
-      title: 'Convocation à l’entretien',
-      subtitle: '',
-      state:
-        candidature?.statut === 'Convoqué' || candidature?.statut === 'Admis'
-          ? 'validee'
-          : 'en_attente',
-      dateInfo: '',
-    },
+  /*
+    RÈGLES FORMELLES DES COULEURS DE PROGRESSION :
+    - Étape terminée : VERT
+    - Étape à mi-chemin / en cours : ROUGE
+    - Étape future / pas encore le moment : GRIS
+  */
+  const step1State: 'vert' | 'rouge' | 'gris' = isEnvoyee ? 'vert' : 'rouge';
+  const step2State: 'vert' | 'rouge' | 'gris' = !isEnvoyee ? 'gris' : hasRetenue || allRejetees ? 'vert' : 'rouge';
+  const step3State: 'vert' | 'rouge' | 'gris' = !isEnvoyee ? 'gris' : hasRetenue ? 'vert' : allRejetees ? 'rouge' : 'rouge';
+  const step4State: 'vert' | 'rouge' | 'gris' = !isEnvoyee ? 'gris' : hasRetenue ? 'vert' : 'gris';
+
+  const stepsList = [
+    { id: 'step_depot', title: '1. Dépôt de candidature', state: step1State },
+    { id: 'step_precontrole', title: '2. Pré-contrôle administratif', state: step2State },
+    { id: 'step_evaluation', title: '3. Décision du directeur', state: step3State },
+    { id: 'step_convocation', title: '4. Convocation à l’entretien', state: step4State },
   ];
+
+  const toggleExpand = (sujetId: string) => {
+    setExpandedSujetIds((prev) => ({
+      ...prev,
+      [sujetId]: !prev[sujetId],
+    }));
+  };
+
+  const handleAnnuler = (candId: string, sujetId: string, intitule: string) => {
+    const confirmCancel = window.confirm(
+      `Êtes-vous sûr de vouloir annuler votre candidature pour le sujet : « ${intitule} » ?`
+    );
+    if (confirmCancel) {
+      annulerCandidature(candId, sujetId);
+    }
+  };
 
   return (
     <div className="min-h-[calc(100vh-64px)] pb-20">
@@ -145,86 +160,234 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             onViewSubjectDetails={onViewSubjectDetails}
             onGoToProgression={() => {
               setIsViewingCart(false);
-              setActiveTab('progression');
+              setActiveTab('candidature');
             }}
           />
         )
       )}
 
-      {/* 2. ONGLET PROGRESSION */}
-      {activeTab === 'progression' && (
+      {/* 2. ONGLET CANDIDATURE (Historique complet + Barre de progression + Journal) */}
+      {activeTab === 'candidature' && (
         <div className="py-6">
           <div className="desktop-container max-w-[820px] mx-auto px-4 flex flex-col gap-5">
-            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-6">
+            {/* EN-TÊTE DE LA SECTION HISTORIQUE */}
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col gap-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h1 className="font-display font-bold text-base text-slate-900">
-                  Progression de la candidature
+                  Historique de mes candidatures
                 </h1>
-                {isEnvoyee && (
-                  <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-semibold bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    Dossier transmis
-                  </span>
-                )}
+                <span className="text-xs font-semibold text-slate-600 bg-slate-50 px-2.5 py-1 rounded-full border border-slate-200">
+                  {mySentCandidatures.length} candidature{mySentCandidatures.length > 1 ? 's' : ''}
+                </span>
               </div>
 
-              {/* Frise chronologique horizontale */}
-              <div className="py-6 px-2">
-                <div className="grid grid-cols-4 gap-4 relative">
-                  <div className="absolute top-5 left-10 right-10 h-0.5 bg-slate-200 -z-0" />
-
-                  {timelineSteps.map((step, index) => {
-                    const isValide = step.state === 'validee';
-                    const isActionRequise = step.state === 'action_requise';
+              {mySentCandidatures.length === 0 ? (
+                <div className="py-8 text-center flex flex-col items-center gap-2">
+                  <FileText className="w-8 h-8 text-slate-300 stroke-[1.5]" />
+                  <p className="text-xs text-slate-500">
+                    Aucune candidature transmise pour le moment.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('home')}
+                    className="btn-secondary text-xs h-[34px] px-3.5 mt-1"
+                  >
+                    Explorer les sujets disponibles
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {mySentCandidatures.map((cand) => {
+                    const fullSujet = sujetsList.find((s) => s.id === cand.sujetId);
+                    const isExpanded = expandedSujetIds[cand.sujetId] ?? true;
+                    const isRetenue = cand.decisionDirecteur === 'Retenue';
+                    const isRejetee = cand.decisionDirecteur === 'Rejetée';
 
                     return (
                       <div
-                        key={step.id}
+                        key={cand.id}
+                        className={`border rounded-xl p-4 flex flex-col gap-3 transition-colors ${
+                          isRetenue
+                            ? 'bg-emerald-50/25 border-emerald-300'
+                            : isRejetee
+                            ? 'bg-red-50/20 border-red-200'
+                            : 'bg-white border-slate-200'
+                        }`}
+                      >
+                        {/* Ligne 1 : Intitulé, spécialité et statut */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide block">
+                              {fullSujet?.discipline || 'Doctorat'}
+                            </span>
+                            <h2 className="font-bold text-sm text-slate-900 leading-snug mt-0.5">
+                              {cand.sujetIntitule}
+                            </h2>
+                          </div>
+
+                          <span
+                            className={`text-[10px] font-bold px-2.5 py-1 rounded-full border shrink-0 ${
+                              isRetenue
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : isRejetee
+                                ? 'bg-red-100 text-red-800 border-red-300'
+                                : 'bg-blue-50 text-blue-700 border-blue-200'
+                            }`}
+                          >
+                            {isRetenue
+                              ? 'Retenue (Admis pour entretien)'
+                              : isRejetee
+                              ? 'Candidature non retenue'
+                              : 'En cours d’instruction'}
+                          </span>
+                        </div>
+
+                        {/* Ligne 2 : Directeur et date d'envoi */}
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 border-y border-slate-100 py-2">
+                          <div className="flex items-center gap-1.5 font-medium">
+                            <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+                            <span>{cand.directeurNom}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 font-medium">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Date d’envoi : {cand.dateDepot}</span>
+                          </div>
+                        </div>
+
+                        {/* Ligne 3 : Description officielle du sujet */}
+                        {fullSujet?.description && (
+                          <div className="flex flex-col gap-1 text-xs text-slate-600">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpand(cand.sujetId)}
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-700 hover:text-blue-600 self-start"
+                            >
+                              <span>Description officielle du sujet</span>
+                              {isExpanded ? (
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              ) : (
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+
+                            {isExpanded && (
+                              <p className="p-3 bg-slate-50 border border-slate-100 rounded-lg text-slate-700 leading-relaxed text-xs">
+                                {fullSujet.description}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Motif du rejet affiché clairement */}
+                        {isRejetee && cand.motifRejet && (
+                          <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800">
+                            <span className="font-bold block mb-0.5">Motif communiqué :</span>
+                            <span>{cand.motifRejet}</span>
+                          </div>
+                        )}
+
+                        {/* Bouton d'annulation de la candidature (actif tant que le dossier n'a pas été évalué) */}
+                        {cand.decisionDirecteur === 'En attente' && (
+                          <div className="pt-1 flex items-center justify-end">
+                            <button
+                              type="button"
+                              onClick={() => handleAnnuler(cand.id, cand.sujetId, cand.sujetIntitule)}
+                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-1.5 rounded-lg border border-red-200 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Annuler la candidature</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* PARTIE PROGRESSION (Épurée sans descriptions de couleurs ni détails encombrants) */}
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h2 className="font-display font-bold text-base text-slate-900">
+                  Progression de la candidature
+                </h2>
+              </div>
+
+              {/* Stepper horizontal épuré */}
+              <div className="py-4 px-2">
+                <div className="grid grid-cols-4 gap-4 relative">
+                  <div className="absolute top-5 left-10 right-10 h-0.5 bg-slate-200 -z-0" />
+
+                  {stepsList.map((st, index) => {
+                    const isVert = st.state === 'vert';
+                    const isRouge = st.state === 'rouge';
+
+                    return (
+                      <div
+                        key={st.id}
                         className="flex flex-col items-center text-center relative z-10"
                       >
                         <div
-                          className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
-                            isValide
+                          className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-colors ${
+                            isVert
                               ? 'bg-emerald-600 text-white shadow-xs'
-                              : isActionRequise
+                              : isRouge
                               ? 'bg-red-600 text-white shadow-xs'
                               : 'bg-white border-2 border-slate-300 text-slate-400'
                           }`}
                         >
-                          {isValide ? (
+                          {isVert ? (
                             <Check className="w-5 h-5 stroke-[2.5]" />
-                          ) : isActionRequise ? (
-                            <X className="w-5 h-5 stroke-[2.5]" />
                           ) : (
                             <span>{index + 1}</span>
                           )}
                         </div>
 
                         <span className="font-semibold text-slate-900 text-xs mt-3 leading-snug">
-                          {step.title}
+                          {st.title}
                         </span>
-
-                        {step.dateInfo && (
-                          <span className="text-[10px] text-slate-400 mt-1">
-                            {step.dateInfo}
-                          </span>
-                        )}
                       </div>
                     );
                   })}
                 </div>
               </div>
             </div>
+
+            {/* JOURNAL DES NOTIFICATIONS */}
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <Bell className="w-4 h-4 text-blue-600" />
+                <h2 className="font-display font-bold text-sm text-slate-900">
+                  Journal des notifications
+                </h2>
+              </div>
+
+              <div className="flex flex-col divide-y divide-slate-100">
+                {candidateNotifications.map((notif) => (
+                  <div key={notif.id} className="py-2.5 flex flex-col gap-1 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-900">{notif.title}</span>
+                      <span className="text-[10px] text-slate-400">{notif.date}</span>
+                    </div>
+                    {notif.detail && (
+                      <p className="text-slate-600 text-[11px] leading-relaxed">
+                        {notif.detail}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* 3. ONGLET PROFIL : PROFIL ÉTUDIANT SÉRIEUX, PHOTO EN HAUT ET INFORMATIONS EN COLONNE */}
+      {/* 3. ONGLET PROFIL */}
       {activeTab === 'profil' && (
         <div className="py-6">
           <div className="desktop-container max-w-[540px] mx-auto px-4 flex flex-col gap-5">
             <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-6">
-              {/* EN-TÊTE DU PROFIL AVEC TITRE ET BOUTON MODIFIER */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <h1 className="font-display font-bold text-base text-slate-900">
                   Profil du Candidat
@@ -242,13 +405,13 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 )}
               </div>
 
-              {/* PHOTO DE PROFIL CLIQUABLE */}
+              {/* Photo de profil cliquable */}
               <div className="flex flex-col items-center text-center gap-3 pb-3 border-b border-slate-100">
                 <div className="relative group">
                   <label
                     htmlFor="avatar-upload"
                     className="w-20 h-20 rounded-full overflow-hidden bg-slate-100 border-2 border-slate-200 flex items-center justify-center cursor-pointer transition-all hover:border-blue-500 shadow-xs block relative"
-                    title="Cliquer pour changer la photo de profil"
+                    title="Changer la photo"
                   >
                     {profileAvatar ? (
                       <img
@@ -279,7 +442,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   <label
                     htmlFor="avatar-upload"
                     className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center cursor-pointer shadow-xs hover:bg-blue-700 transition-colors"
-                    title="Ajouter une photo"
                   >
                     <Camera className="w-3.5 h-3.5" />
                   </label>
@@ -295,51 +457,42 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 </div>
               </div>
 
-              {/* INFORMATIONS ESSENTIELLES EN FORME DE COLONNE UNIQUE */}
+              {/* Informations essentielles */}
               {!isEditingProfile ? (
                 <div className="flex flex-col divide-y divide-slate-100 text-xs">
                   <div className="py-2.5 flex items-center justify-between">
                     <span className="text-slate-500 font-medium">Nom</span>
                     <span className="font-semibold text-slate-900">{profileNom}</span>
                   </div>
-
                   <div className="py-2.5 flex items-center justify-between">
                     <span className="text-slate-500 font-medium">Prénom</span>
                     <span className="font-semibold text-slate-900">{profilePrenom}</span>
                   </div>
-
                   <div className="py-2.5 flex items-center justify-between">
                     <span className="text-slate-500 font-medium">Email académique</span>
                     <span className="font-semibold text-slate-900">{profile.email}</span>
                   </div>
-
                   <div className="py-2.5 flex items-center justify-between">
                     <span className="text-slate-500 font-medium">CNE / Code Massar</span>
                     <span className="font-semibold text-slate-900">{profileCne}</span>
                   </div>
-
                   <div className="py-2.5 flex items-center justify-between">
                     <span className="text-slate-500 font-medium">Téléphone</span>
                     <span className="font-semibold text-slate-900">{profileTelephone}</span>
                   </div>
-
                   <div className="py-2.5 flex items-center justify-between">
                     <span className="text-slate-500 font-medium">Établissement d’origine</span>
                     <span className="font-semibold text-slate-900">{profileEtablissement}</span>
                   </div>
-
                   <div className="py-2.5 flex items-center justify-between">
                     <span className="text-slate-500 font-medium">Diplôme d’accès</span>
                     <span className="font-semibold text-slate-900">{profileDiplome}</span>
                   </div>
                 </div>
               ) : (
-                /* FORMULAIRE D'ÉDITION EN FORME DE COLONNE */
                 <form onSubmit={handleSaveProfile} className="flex flex-col gap-3.5 text-xs">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Nom
-                    </label>
+                    <label className="block font-semibold text-slate-700 mb-1">Nom</label>
                     <input
                       type="text"
                       value={profileNom}
@@ -348,11 +501,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                       required
                     />
                   </div>
-
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Prénom
-                    </label>
+                    <label className="block font-semibold text-slate-700 mb-1">Prénom</label>
                     <input
                       type="text"
                       value={profilePrenom}
@@ -361,11 +511,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                       required
                     />
                   </div>
-
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Téléphone
-                    </label>
+                    <label className="block font-semibold text-slate-700 mb-1">Téléphone</label>
                     <input
                       type="text"
                       value={profileTelephone}
@@ -373,11 +520,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                       className="form-input text-xs h-[36px]"
                     />
                   </div>
-
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      CNE / Code Massar
-                    </label>
+                    <label className="block font-semibold text-slate-700 mb-1">CNE / Code Massar</label>
                     <input
                       type="text"
                       value={profileCne}
@@ -385,11 +529,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                       className="form-input text-xs h-[36px]"
                     />
                   </div>
-
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Établissement d’origine
-                    </label>
+                    <label className="block font-semibold text-slate-700 mb-1">Établissement d’origine</label>
                     <input
                       type="text"
                       value={profileEtablissement}
@@ -397,11 +538,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                       className="form-input text-xs h-[36px]"
                     />
                   </div>
-
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Diplôme d’accès
-                    </label>
+                    <label className="block font-semibold text-slate-700 mb-1">Diplôme d’accès</label>
                     <input
                       type="text"
                       value={profileDiplome}
@@ -409,7 +547,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                       className="form-input text-xs h-[36px]"
                     />
                   </div>
-
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
                     <button
                       type="button"
@@ -429,7 +566,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         </div>
       )}
 
-      {/* PESTANAS DE NAVEGACION EN LA PARTE INFERIOR : Exactamente Home, Progression, Profil */}
+      {/* PESTAÑAS DE NAVEGACIÓN EN LA PARTE INFERIOR: Home, Candidature, Profil */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 shadow-md h-[54px] flex items-center justify-center">
         <div className="desktop-container flex items-center justify-around max-w-md w-full">
           <button
@@ -452,16 +589,16 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             type="button"
             onClick={() => {
               setIsViewingCart(false);
-              setActiveTab('progression');
+              setActiveTab('candidature');
             }}
             className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${
-              activeTab === 'progression'
+              activeTab === 'candidature'
                 ? 'text-blue-600'
                 : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            <Clock className="w-5 h-5" />
-            <span>Progression</span>
+            <FileText className="w-5 h-5" />
+            <span>Candidature</span>
           </button>
 
           <button

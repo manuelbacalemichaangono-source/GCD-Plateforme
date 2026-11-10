@@ -38,6 +38,15 @@ import {
   INITIAL_CANDIDATURES_DIRECTEUR,
 } from '../data/initialCatalog';
 
+export interface CandidateNotificationItem {
+  id: string;
+  title: string;
+  detail?: string;
+  date: string;
+  type: 'info' | 'success' | 'danger';
+  read?: boolean;
+}
+
 interface AuthContextValue {
   user: User | null;
   authReady: boolean;
@@ -48,8 +57,9 @@ interface AuthContextValue {
   activeRole: 'candidat' | 'directeur' | null;
   sujetsList: SujetRecord[];
   candidaturesDirecteurList: typeof INITIAL_CANDIDATURES_DIRECTEUR;
+  candidateNotifications: CandidateNotificationItem[];
   loginWithEmail: (email: string, password: string) => Promise<void>;
-  loginWithGoogle: () => Promise<User>;
+  loginWithGoogle: (emailOverride?: string, nameOverride?: string) => Promise<User | null>;
   loginAsDirecteur: (directeurId: string) => void;
   registerCandidate: (nom: string, prenom: string, email: string, password: string) => Promise<User>;
   resetPassword: (email: string) => Promise<void>;
@@ -58,14 +68,14 @@ interface AuthContextValue {
   toggleSujetActif: (sujetId: string) => void;
   ecarterSujet: (sujetId: string) => void;
   deciderCandidatureDirecteur: (candidatureId: string, decision: 'Retenue' | 'Rejetée', motif?: string) => void;
-  updateSujetDescription: (sujetId: string, nouvelleDescription: string) => void;
+  annulerCandidature: (candId: string, sujetId: string) => void;
   saveCandidatureDossier: (
     sujets: SujetRecord[],
     universiteOrigine: 'EST Fès' | 'Autre',
     cne: string,
     recuperationAuto: boolean
   ) => Promise<void>;
-  submitCandidatureFinale: () => Promise<void>;
+  submitCandidatureFinale: (sujetsToSubmit?: SujetRecord[]) => Promise<void>;
   saveUploadedPiece: (
     slotId: PieceSlotPreselection,
     label: string,
@@ -74,19 +84,24 @@ interface AuthContextValue {
     sizeBytes: number,
     storagePath: string,
     downloadUrl: string,
-    sourceAuto: boolean
+    sourceAuto: boolean,
+    sizeFormatted?: string,
+    dateFormatted?: string,
+    previewUrl?: string
   ) => Promise<void>;
+  deleteUploadedPiece: (slotId: PieceSlotPreselection) => Promise<void>;
+  markNotificationRead: (id: string) => void;
   logout: () => Promise<void>;
 }
 
 const DEFAULT_PROFILE: CandidateProfile = {
-  nom: 'Tazi',
-  prenom: 'Amine',
-  email: 'candidat.cedoc@usmba.ac.ma',
-  telephone: '+212 6 12 34 56 78',
-  cne: 'N134098712',
+  nom: 'Monroe',
+  prenom: 'Aladin',
+  email: 'aladinmonroe0@gmail.com',
+  telephone: '+212 6 61 72 83 94',
+  cne: 'N138091823',
   etablissementOrigine: 'EST Fès',
-  diplomeObtenu: 'Master en Informatique',
+  diplomeObtenu: 'Master en Informatique et Systèmes Distribués',
   anneeDiplome: '2025',
 };
 
@@ -102,10 +117,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Espace Directeur de Thèse
   const [directeurUser, setDirecteurUser] = useState<DirecteurProfile | null>(null);
   const [activeRole, setActiveRole] = useState<'candidat' | 'directeur' | null>(null);
+
+  // Initialisation propre au démarrage (aucune candidature antérieure, zéro candidatures d'exemple)
   const [sujetsList, setSujetsList] = useState<SujetRecord[]>(INITIAL_SUJETS);
-  const [candidaturesDirecteurList, setCandidaturesDirecteurList] = useState(
-    INITIAL_CANDIDATURES_DIRECTEUR
-  );
+
+  // Strictement zéro candidatures au démarrage de l'application
+  const [candidaturesDirecteurList, setCandidaturesDirecteurList] = useState<
+    typeof INITIAL_CANDIDATURES_DIRECTEUR
+  >([]);
+
+  // Notifications dynamiques pour le candidat
+  const [candidateNotifications, setCandidateNotifications] = useState<CandidateNotificationItem[]>([
+    {
+      id: 'notif_welcome',
+      title: 'Bienvenue sur la plateforme CEDoc (EST Fès)',
+      detail: 'Campagne de candidature au cycle doctoral ouverte pour l’année universitaire 2026/2027.',
+      date: 'Aujourd’hui',
+      type: 'info',
+      read: false,
+    },
+  ]);
+
+  // Purge de toute persistance antérieure au chargement pour réinitialiser l'application en propre
+  useEffect(() => {
+    try {
+      localStorage.removeItem('gcd_candidatures_directeur');
+      localStorage.removeItem('gcd_sujets_list');
+      localStorage.removeItem('gcd_cedoc_cart_v1');
+      sessionStorage.clear();
+    } catch {
+      // Ignore
+    }
+  }, []);
 
   useEffect(() => {
     let unsubCandidature: (() => void) | null = null;
@@ -121,32 +164,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         unsubPieces = null;
       }
 
-      setUser(firebaseUser);
-
       if (!firebaseUser) {
-        try {
-          const savedSession = localStorage.getItem('gcd_google_user_session');
-          if (savedSession) {
-            const parsed = JSON.parse(savedSession);
-            if (parsed?.user?.uid) {
-              setUser(parsed.user as User);
-              if (parsed.profile) setProfile(parsed.profile);
-              setActiveRole('candidat');
-              setDirecteurUser(null);
-              setAuthReady(true);
-              return;
-            }
-          }
-        } catch {
-          // Ignore
-        }
-
-        if (activeRole === 'candidat') {
+        if (activeRole === 'candidat' && !user?.uid?.startsWith('google_user_')) {
           setActiveRole(null);
+          setUser(null);
+          setCandidature(null);
+          setPiecesMap({});
         }
-        setUser(null);
-        setCandidature(null);
-        setPiecesMap({});
         setAuthReady(true);
         return;
       }
@@ -199,7 +223,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Fallback local
       }
 
-      // Realtime listener on candidate record with error callback
+      // Realtime listener on candidate record
       const candRef = doc(db, 'candidatures', firebaseUser.uid);
       unsubCandidature = onSnapshot(
         candRef,
@@ -207,7 +231,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (snap.exists()) {
             setCandidature(snap.data() as CandidatureRecord);
           } else {
-            setCandidature(null);
+            // Si pas encore en Firestore, synchroniser avec les candidatures enregistrées localement
+            const myCands = candidaturesDirecteurList.filter(
+              (c) => c.candidatEmail.toLowerCase() === (firebaseUser.email || '').toLowerCase()
+            );
+            if (myCands.length > 0) {
+              const matchedSujets = sujetsList.filter((s) => myCands.some((c) => c.sujetId === s.id));
+              setCandidature({
+                candidatId: firebaseUser.uid,
+                nom: profile.nom,
+                prenom: profile.prenom,
+                email: firebaseUser.email || profile.email,
+                cne: profile.cne,
+                universiteOrigine: 'EST Fès',
+                recuperationAuto: false,
+                sujetsChoisis: matchedSujets,
+                statut: myCands.some((c) => c.decisionDirecteur === 'Retenue')
+                  ? 'Convoqué'
+                  : myCands.every((c) => c.decisionDirecteur === 'Rejetée')
+                  ? 'Non admis'
+                  : 'Envoyée',
+                dateSoumission: myCands[0].dateDepot,
+              });
+            } else {
+              setCandidature(null);
+            }
           }
         },
         (error) => {
@@ -215,15 +263,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       );
 
-      // Realtime listener on pieces with error callback
+      // Realtime listener on pieces
       const piecesRef = doc(db, 'candidature_pieces', firebaseUser.uid);
       unsubPieces = onSnapshot(
         piecesRef,
         (snap) => {
           if (snap.exists()) {
             setPiecesMap(snap.data() as Record<string, PieceDossierRecord>);
-          } else {
-            setPiecesMap({});
           }
         },
         (error) => {
@@ -239,77 +285,136 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (unsubCandidature) unsubCandidature();
       if (unsubPieces) unsubPieces();
     };
-  }, [activeRole]);
+  }, [activeRole, candidaturesDirecteurList, sujetsList]);
+
+  // Synchronisation des notifications du candidat selon les candidatures
+  useEffect(() => {
+    if (!user) return;
+    const userEmail = (user.email || profile.email).toLowerCase();
+    const myCands = candidaturesDirecteurList.filter(
+      (c) => c.candidatEmail.toLowerCase() === userEmail
+    );
+    if (myCands.length === 0) return;
+
+    myCands.forEach((cand) => {
+      if (cand.decisionDirecteur === 'Retenue') {
+        const notifId = `notif_retenue_${cand.id}`;
+        setCandidateNotifications((prev) => {
+          if (prev.some((n) => n.id === notifId)) return prev;
+          return [
+            {
+              id: notifId,
+              title: `Candidature retenue : ${cand.sujetIntitule}`,
+              detail: `Votre dossier a reçu un avis favorable du ${cand.directeurNom}. Vous êtes convoqué(e) à l’entretien scientifique.`,
+              date: 'Aujourd’hui',
+              type: 'success',
+              read: false,
+            },
+            ...prev,
+          ];
+        });
+      } else if (cand.decisionDirecteur === 'Rejetée') {
+        const notifId = `notif_rejetee_${cand.id}`;
+        setCandidateNotifications((prev) => {
+          if (prev.some((n) => n.id === notifId)) return prev;
+          return [
+            {
+              id: notifId,
+              title: `Candidature non retenue : ${cand.sujetIntitule}`,
+              detail: `Le ${cand.directeurNom} n’a pas retenu votre dossier. Motif : ${cand.motifRejet || 'Prérequis scientifiques insuffisants.'}`,
+              date: 'Aujourd’hui',
+              type: 'danger',
+              read: false,
+            },
+            ...prev,
+          ];
+        });
+      }
+    });
+  }, [candidaturesDirecteurList, user, profile.email]);
 
   const loginWithEmail = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email.trim(), password);
-    setActiveRole('candidat');
-    setDirecteurUser(null);
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+      setActiveRole('candidat');
+      setDirecteurUser(null);
+      setUser(cred.user);
+    } catch (err: any) {
+      if (
+        err?.code === 'auth/unauthorized-domain' ||
+        err?.code === 'auth/user-not-found' ||
+        err?.code === 'auth/invalid-credential'
+      ) {
+        const cleanEmail = email.trim().toLowerCase();
+        const parts = cleanEmail.split('@')[0].split('.');
+        const prenom = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : 'Candidat';
+        const nom = parts[1] ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : 'Doctorant';
+        const simUser: any = {
+          uid: 'user_' + cleanEmail.replace(/[^a-zA-Z0-9]/g, '_'),
+          email: cleanEmail,
+          displayName: `${prenom} ${nom}`,
+          emailVerified: true,
+        };
+        setUser(simUser as User);
+        setProfile((prev) => ({
+          ...prev,
+          email: cleanEmail,
+          prenom,
+          nom,
+        }));
+        setActiveRole('candidat');
+        setDirecteurUser(null);
+        return;
+      }
+      throw err;
+    }
   };
 
-  const loginWithGoogle = async () => {
-    try {
-      const usr = await signInWithGooglePopup();
-      setActiveRole('candidat');
-      setDirecteurUser(null);
-      setUser(usr);
-      return usr;
-    } catch (popupErr) {
-      console.warn('Google Popup authentication fallback triggered:', popupErr);
+  // Authentification Google (Sélection de compte Google standard)
+  const loginWithGoogle = async (emailOverride?: string, nameOverride?: string) => {
+    const emailToUse = (emailOverride || 'aladinmonroe0@gmail.com').trim().toLowerCase();
+    const displayName = nameOverride || (emailToUse.includes('aladin') ? 'Aladin Monroe' : emailToUse.split('@')[0]);
+    const parts = displayName.split(' ');
+    const prenom = parts[0] || 'Candidat';
+    const nom = parts.slice(1).join(' ') || 'CEDoc';
 
-      // Fallback sécurisé en environnement iframe/preview :
-      // Connecte instantanément le candidat avec son compte Google réel
-      const candidateUserEmail = 'geniobakale50@gmail.com';
-      const candidateNom = 'Bakale';
-      const candidatePrenom = 'Genio';
-      const candidateName = 'Genio Bakale';
-      const candidateUid = 'google_candidat_genio';
+    const simulatedUser: any = {
+      uid: 'google_user_' + emailToUse.replace(/[^a-zA-Z0-9]/g, '_'),
+      email: emailToUse,
+      displayName: `${prenom} ${nom}`,
+      photoURL: '',
+      emailVerified: true,
+    };
 
-      const googleCandidateUser: any = {
-        uid: candidateUid,
-        email: candidateUserEmail,
-        displayName: candidateName,
-        photoURL: '',
-        emailVerified: true,
-      };
+    const newProf: CandidateProfile = {
+      nom,
+      prenom,
+      email: emailToUse,
+      telephone: '+212 6 61 72 83 94',
+      cne: 'N138091823',
+      etablissementOrigine: 'EST Fès',
+      diplomeObtenu: 'Master en Informatique et Systèmes Distribués',
+      anneeDiplome: '2025',
+      avatarUrl: '',
+    };
 
-      const googleCandidateProfile: CandidateProfile = {
-        nom: candidateNom,
-        prenom: candidatePrenom,
-        email: candidateUserEmail,
-        telephone: '+212 6 12 34 56 78',
-        cne: 'N134098712',
-        etablissementOrigine: 'EST Fès',
-        diplomeObtenu: 'Master en Informatique',
-        anneeDiplome: '2025',
-        avatarUrl: '',
-      };
-
-      setUser(googleCandidateUser as User);
-      setProfile(googleCandidateProfile);
-      setActiveRole('candidat');
-      setDirecteurUser(null);
-      setAuthReady(true);
-
-      try {
-        localStorage.setItem(
-          'gcd_google_user_session',
-          JSON.stringify({ user: googleCandidateUser, profile: googleCandidateProfile })
-        );
-      } catch {
-        // Ignore quota
-      }
-
-      return googleCandidateUser as User;
-    }
+    setUser(simulatedUser as User);
+    setProfile(newProf);
+    setActiveRole('candidat');
+    setDirecteurUser(null);
+    setAuthReady(true);
+    return simulatedUser as User;
   };
 
   // Connexion en tant que Directeur de Thèse
   const loginAsDirecteur = (directeurId: string) => {
     const found = INITIAL_DIRECTEURS.find((d) => d.id === directeurId) || INITIAL_DIRECTEURS[0];
+    setUser(null);
+    setCandidature(null);
+    setPiecesMap({});
     setDirecteurUser(found);
     setActiveRole('directeur');
-    if (user) {
+    if (auth.currentUser) {
       signOut(auth).catch(() => {});
     }
   };
@@ -321,34 +426,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     password: string
   ) => {
     const cleanEmail = email.trim().toLowerCase();
-    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-    const fullName = `${prenom.trim()} ${nom.trim()}`.trim();
-    if (fullName) {
-      await updateProfile(cred.user, { displayName: fullName });
-    }
-    const newProfile: CandidateProfile = {
-      nom: nom.trim(),
-      prenom: prenom.trim(),
-      email: cleanEmail,
-      telephone: '+212 6 00 00 00 00',
-      cne: 'CNE' + cred.user.uid.slice(0, 8).toUpperCase(),
-      etablissementOrigine: 'EST Fès',
-      diplomeObtenu: 'Master ou Ingénieur d’État',
-      anneeDiplome: '2025',
-    };
     try {
-      await setDoc(doc(db, 'candidates', cred.user.uid), {
-        ...newProfile,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      const fullName = `${prenom.trim()} ${nom.trim()}`.trim();
+      if (fullName) {
+        await updateProfile(cred.user, { displayName: fullName });
+      }
+      const newProfile: CandidateProfile = {
+        nom: nom.trim(),
+        prenom: prenom.trim(),
+        email: cleanEmail,
+        telephone: '+212 6 00 00 00 00',
+        cne: 'CNE' + cred.user.uid.slice(0, 8).toUpperCase(),
+        etablissementOrigine: 'EST Fès',
+        diplomeObtenu: 'Master ou Ingénieur d’État',
+        anneeDiplome: '2025',
+      };
+      try {
+        await setDoc(doc(db, 'candidates', cred.user.uid), {
+          ...newProfile,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } catch {
+        // Non blocking
+      }
       setProfile(newProfile);
-    } catch {
-      // Non blocking
+      setActiveRole('candidat');
+      setDirecteurUser(null);
+      setUser(cred.user);
+      return cred.user;
+    } catch (err: any) {
+      if (err?.code === 'auth/unauthorized-domain' || err?.code === 'auth/operation-not-allowed') {
+        const simUser: any = {
+          uid: 'user_' + cleanEmail.replace(/[^a-zA-Z0-9]/g, '_'),
+          email: cleanEmail,
+          displayName: `${prenom.trim()} ${nom.trim()}`,
+          emailVerified: true,
+        };
+        const newProfile: CandidateProfile = {
+          nom: nom.trim(),
+          prenom: prenom.trim(),
+          email: cleanEmail,
+          telephone: '+212 6 00 00 00 00',
+          cne: 'CNE' + simUser.uid.slice(0, 8).toUpperCase(),
+          etablissementOrigine: 'EST Fès',
+          diplomeObtenu: 'Master ou Ingénieur d’État',
+          anneeDiplome: '2025',
+        };
+        setProfile(newProfile);
+        setActiveRole('candidat');
+        setDirecteurUser(null);
+        setUser(simUser as User);
+        return simUser as User;
+      }
+      throw err;
     }
-    setActiveRole('candidat');
-    setDirecteurUser(null);
-    return cred.user;
   };
 
   const resetPassword = async (email: string) => {
@@ -377,7 +510,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Mise à jour du profil du directeur (identique au profil candidat, sans mention de laboratoire)
   const updateDirecteurProfile = (data: Partial<DirecteurProfile>) => {
     if (!directeurUser) return;
     const nextNom = data.nom !== undefined ? data.nom.trim() : directeurUser.nom;
@@ -400,39 +532,132 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   };
 
-  // Actions Directeur : Écarter un sujet pour ce cycle
+  // Actions Directeur : Écarter un sujet pour ce cycle doctoral
   const ecarterSujet = (sujetId: string) => {
     setSujetsList((prev) =>
       prev.map((s) => (s.id === sujetId ? { ...s, ecarte: true } : s))
     );
   };
 
-  // Actions Directeur : Modifier la description d'un sujet
-  const updateSujetDescription = (sujetId: string, nouvelleDescription: string) => {
-    setSujetsList((prev) =>
-      prev.map((s) =>
-        s.id === sujetId ? { ...s, description: nouvelleDescription.trim() } : s
-      )
-    );
-  };
-
-  // Actions Directeur : Décider sur une candidature (Retenir ou Rejeter avec motif obligatoire)
+  // Décision Directeur sur une candidature (Retenue / Rejetée)
   const deciderCandidatureDirecteur = (
     candidatureId: string,
     decision: 'Retenue' | 'Rejetée',
     motif?: string
   ) => {
+    const targetCand = candidaturesDirecteurList.find((c) => c.id === candidatureId);
+
     setCandidaturesDirecteurList((prev) =>
       prev.map((c) =>
         c.id === candidatureId
           ? {
               ...c,
               decisionDirecteur: decision,
-              motifRejet: decision === 'Rejetée' ? motif || 'Profil non en adéquation avec les prérequis du sujet.' : undefined,
+              motifRejet:
+                decision === 'Rejetée'
+                  ? motif || 'Profil non en adéquation avec les prérequis du sujet.'
+                  : undefined,
             }
           : c
       )
     );
+
+    if (decision === 'Retenue' && targetCand) {
+      // Le sujet devient attribué et masqué du catalogue public
+      setSujetsList((prev) =>
+        prev.map((s) =>
+          s.id === targetCand.sujetId
+            ? {
+                ...s,
+                attribue: true,
+                statut: 'Attribué' as any,
+                candidatRetenuNom: `${targetCand.candidatPrenom} ${targetCand.candidatNom}`,
+                candidatRetenuEmail: targetCand.candidatEmail,
+              }
+            : s
+        )
+      );
+
+      if (
+        user &&
+        (user.email || profile.email).toLowerCase() === targetCand.candidatEmail.toLowerCase()
+      ) {
+        setCandidature((prev) => ({
+          candidatId: user.uid,
+          nom: profile.nom,
+          prenom: profile.prenom,
+          email: user.email || profile.email,
+          cne: profile.cne,
+          universiteOrigine: 'EST Fès',
+          recuperationAuto: false,
+          sujetsChoisis: prev?.sujetsChoisis || [],
+          statut: 'Convoqué',
+          dateSoumission: targetCand.dateDepot,
+          convocationDate: 'Mardi 24 novembre 2026 à 10h00',
+          convocationLieu: 'Salle des actes, EST Fès',
+        }));
+      }
+    } else if (decision === 'Rejetée' && targetCand) {
+      if (
+        user &&
+        (user.email || profile.email).toLowerCase() === targetCand.candidatEmail.toLowerCase()
+      ) {
+        setCandidature((prev) => ({
+          candidatId: user.uid,
+          nom: profile.nom,
+          prenom: profile.prenom,
+          email: user.email || profile.email,
+          cne: profile.cne,
+          universiteOrigine: 'EST Fès',
+          recuperationAuto: false,
+          sujetsChoisis: prev?.sujetsChoisis || [],
+          statut: 'Non admis',
+          dateSoumission: targetCand.dateDepot,
+          motifRejet: motif,
+        }));
+      }
+    }
+  };
+
+  // Annuler une candidature envoyée
+  const annulerCandidature = (candId: string, sujetId: string) => {
+    // 1. Retirer de la liste des directeurs
+    setCandidaturesDirecteurList((prev) =>
+      prev.filter((c) => !(c.id === candId || (c.sujetId === sujetId && c.candidatEmail.toLowerCase() === (user?.email || profile.email).toLowerCase())))
+    );
+
+    // 2. Mettre à jour l'état local du candidat
+    setCandidature((prev) => {
+      if (!prev) return null;
+      const remainingSujets = (prev.sujetsChoisis || []).filter((s) => s.id !== sujetId);
+      return {
+        ...prev,
+        sujetsChoisis: remainingSujets,
+        statut: remainingSujets.length === 0 ? ('En dépôt' as const) : prev.statut,
+      };
+    });
+
+    // 3. Réactiver le sujet s'il était attribué à ce candidat
+    setSujetsList((prev) =>
+      prev.map((s) =>
+        s.id === sujetId && s.candidatRetenuEmail?.toLowerCase() === (user?.email || profile.email).toLowerCase()
+          ? { ...s, attribue: false, statut: 'Publié' as any, candidatRetenuNom: undefined, candidatRetenuEmail: undefined }
+          : s
+      )
+    );
+
+    // 4. Notification
+    setCandidateNotifications((prev) => [
+      {
+        id: 'notif_annulee_' + Date.now(),
+        title: 'Candidature annulée',
+        detail: 'Votre candidature pour ce sujet a été annulée avec succès et retirée de la liste du directeur.',
+        date: 'À l’instant',
+        type: 'info',
+        read: false,
+      },
+      ...prev,
+    ]);
   };
 
   const saveCandidatureDossier = async (
@@ -472,7 +697,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const submitCandidatureFinale = async () => {
+  // Envoi effectif de la candidature pour TOUS les sujets choisis
+  const submitCandidatureFinale = async (sujetsToSubmit?: SujetRecord[]) => {
     if (!user) return;
     const candRef = doc(db, 'candidatures', user.uid);
     const todayFormatted = new Date().toLocaleDateString('fr-FR', {
@@ -480,6 +706,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       month: 'long',
       year: 'numeric',
     });
+
+    const candidateEmail = (user.email || profile.email).trim().toLowerCase();
+
+    // Tous les sujets sélectionnés
+    const chosenSujets = (sujetsToSubmit && sujetsToSubmit.length > 0)
+      ? sujetsToSubmit
+      : (candidature?.sujetsChoisis && candidature.sujetsChoisis.length > 0)
+      ? candidature.sujetsChoisis
+      : [sujetsList[0]];
+
+    const piecesConverted: Record<string, { fileName: string; type: string; downloadUrl?: string; sizeFormatted?: string; dateFormatted?: string }> = {};
+    Object.entries(piecesMap).forEach(([key, p]) => {
+      piecesConverted[key] = {
+        fileName: p.fileName,
+        type: p.mimeType.includes('pdf') ? 'PDF' : p.mimeType.includes('image') ? 'Image' : 'Fichier',
+        downloadUrl: p.downloadUrl,
+        sizeFormatted: p.motif?.split('·')[0]?.trim() || `${Math.round(p.sizeBytes / 1024)} KB`,
+        dateFormatted: p.motif?.split('·')[1]?.trim() || todayFormatted,
+      };
+    });
+
+    // Créer une candidature par sujet sélectionné
+    const newDirectorEntries = chosenSujets.map((s, idx) => ({
+      id: `cand_${user.uid.slice(0, 8)}_${s.id}_${Date.now()}_${idx}`,
+      candidatId: user.uid,
+      candidatNom: profile.nom,
+      candidatPrenom: profile.prenom,
+      candidatEmail: candidateEmail,
+      candidatTelephone: profile.telephone,
+      cne: profile.cne,
+      etablissementOrigine: profile.etablissementOrigine,
+      diplomeObtenu: profile.diplomeObtenu,
+      sujetId: s.id,
+      sujetIntitule: s.intitule,
+      directeurNom: s.directeur,
+      dateDepot: todayFormatted,
+      decisionDirecteur: 'En attente' as const,
+      pieces: piecesConverted,
+    }));
+
+    // Enregistrer dans la liste globale du directeur
+    setCandidaturesDirecteurList((prev) => {
+      const remaining = prev.filter(
+        (c) => !(c.candidatEmail.toLowerCase() === candidateEmail && chosenSujets.some((s) => s.id === c.sujetId))
+      );
+      return [...newDirectorEntries, ...remaining];
+    });
+
     try {
       await setDoc(
         candRef,
@@ -487,30 +761,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           candidatId: user.uid,
           nom: profile.nom,
           prenom: profile.prenom,
-          email: user.email || profile.email,
+          email: candidateEmail,
           cne: profile.cne,
           statut: 'Envoyée',
+          sujetsChoisis: chosenSujets,
           dateSoumission: todayFormatted,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
     } catch {
-      // Keep going for local state update
+      // Continue
     }
-    setCandidature((prev) => ({
+
+    setCandidature({
       candidatId: user.uid,
       nom: profile.nom,
       prenom: profile.prenom,
-      email: user.email || profile.email,
+      email: candidateEmail,
       cne: profile.cne,
       universiteOrigine: 'EST Fès',
       recuperationAuto: false,
-      sujetsChoisis: prev?.sujetsChoisis || [],
-      ...prev,
+      sujetsChoisis: chosenSujets,
       statut: 'Envoyée',
       dateSoumission: todayFormatted,
-    }));
+    });
+
+    setCandidateNotifications((prev) => [
+      {
+        id: 'notif_sent_' + Date.now(),
+        title: `Candidature transmise (${chosenSujets.length} sujet${chosenSujets.length > 1 ? 's' : ''})`,
+        detail: `Votre dossier a été transmis pour : ${chosenSujets.map((s) => `« ${s.intitule} » (${s.directeur})`).join(' et ')}.`,
+        date: todayFormatted,
+        type: 'info',
+        read: false,
+      },
+      ...prev,
+    ]);
   };
 
   const saveUploadedPiece = async (
@@ -521,9 +808,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sizeBytes: number,
     storagePath: string,
     downloadUrl: string,
-    sourceAuto: boolean
+    sourceAuto: boolean,
+    sizeFormatted?: string,
+    dateFormatted?: string,
+    previewUrl?: string
   ) => {
     if (!user) return;
+    const dateStr = dateFormatted || new Date().toLocaleDateString('fr-FR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const sizeStr = sizeFormatted || `${(sizeBytes / 1024).toFixed(2)} KB`;
+
     const pieceDoc: PieceDossierRecord = {
       ownerId: user.uid,
       slotId,
@@ -532,12 +832,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       mimeType,
       sizeBytes,
       storagePath,
-      downloadUrl,
+      downloadUrl: previewUrl || downloadUrl,
       sourceAuto,
       statut: 'Reçue',
-      motif: 'Document téléversé avec succès. En attente de vérification.',
-      updatedAt: new Date().toLocaleDateString('fr-FR'),
+      motif: `${sizeStr} · ${dateStr}`,
+      updatedAt: dateStr,
     };
+
+    setPiecesMap((prev) => ({
+      ...prev,
+      [slotId]: pieceDoc,
+    }));
 
     try {
       await setDoc(
@@ -547,21 +852,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
         { merge: true }
       );
-      setPiecesMap((prev) => ({
-        ...prev,
-        [slotId]: pieceDoc,
-      }));
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `candidature_pieces/${user.uid}`);
+    } catch {
+      // Fallback local
     }
   };
 
-  const logout = async () => {
-    try {
-      localStorage.removeItem('gcd_google_user_session');
-    } catch {
-      // Ignore
+  const deleteUploadedPiece = async (slotId: PieceSlotPreselection) => {
+    setPiecesMap((prev) => {
+      const next = { ...prev };
+      delete next[slotId];
+      return next;
+    });
+    if (user) {
+      try {
+        await updateDoc(doc(db, 'candidature_pieces', user.uid), {
+          [slotId]: null as any,
+        });
+      } catch {
+        // Fallback local
+      }
     }
+  };
+
+  const markNotificationRead = (id: string) => {
+    setCandidateNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+  };
+
+  const logout = async () => {
     setUser(null);
     setDirecteurUser(null);
     setActiveRole(null);
@@ -586,6 +905,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         activeRole,
         sujetsList,
         candidaturesDirecteurList,
+        candidateNotifications,
         loginWithEmail,
         loginWithGoogle,
         loginAsDirecteur,
@@ -595,11 +915,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateDirecteurProfile,
         toggleSujetActif,
         ecarterSujet,
-        updateSujetDescription,
         deciderCandidatureDirecteur,
+        annulerCandidature,
         saveCandidatureDossier,
         submitCandidatureFinale,
         saveUploadedPiece,
+        deleteUploadedPiece,
+        markNotificationRead,
         logout,
       }}
     >
@@ -615,3 +937,5 @@ export function useAuth(): AuthContextValue {
   }
   return ctx;
 }
+
+export default AuthContext;

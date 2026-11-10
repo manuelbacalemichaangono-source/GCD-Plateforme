@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { Search, ChevronLeft, ChevronRight, Plus, Check, ShoppingBag } from 'lucide-react';
 import { SujetRecord } from '../types/cedoc';
-import { INITIAL_SUJETS, SPECIALITES_INITIALES } from '../data/initialCatalog';
+import { SPECIALITES_INITIALES } from '../data/initialCatalog';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 
 interface HomePageProps {
   onViewSubjectDetails: (sujet: SujetRecord) => void;
@@ -17,6 +18,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   onOpenCart,
   isCandidateMode = false,
 }) => {
+  const { sujetsList } = useAuth();
   const {
     cartItems,
     maxCapacity,
@@ -30,9 +32,21 @@ export const HomePage: React.FC<HomePageProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Filtrage des sujets selon discipline et mot-clé
+  // Filtrage des sujets selon disponibilité stricte :
+  // RÈGLE : Un sujet de thèse est UNIQUE à un seul doctorant.
+  // Dès qu'un candidat est retenu pour ce sujet, il devient indisponible et est masqué du catalogue public.
+  // De même s'il est désactivé ou écarté par le directeur de thèse.
   const filteredSubjects = useMemo(() => {
-    return INITIAL_SUJETS.filter((sujet) => {
+    return sujetsList.filter((sujet) => {
+      if (sujet.attribue || sujet.statut === 'Attribué') {
+        return false;
+      }
+      if (sujet.actif === false) {
+        return false;
+      }
+      if (sujet.ecarte) {
+        return false;
+      }
       if (activeDiscipline !== 'Tous' && sujet.discipline !== activeDiscipline) {
         return false;
       }
@@ -47,7 +61,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       }
       return true;
     });
-  }, [activeDiscipline, searchTerm]);
+  }, [sujetsList, activeDiscipline, searchTerm]);
 
   React.useEffect(() => {
     setCurrentPage(1);
@@ -109,7 +123,7 @@ export const HomePage: React.FC<HomePageProps> = ({
             </select>
           </div>
 
-          {/* BOUTON DYNAMIQUE DE LA CESTA : Parfaitement intégré, ne bloque jamais le contenu au défilement */}
+          {/* BOUTON DYNAMIQUE DE LA CESTA */}
           <button
             type="button"
             onClick={onOpenCart}
@@ -135,9 +149,8 @@ export const HomePage: React.FC<HomePageProps> = ({
           </div>
         )}
 
-        {/* EN MILIEU : LE GRAND CADRE AVEC LES SUJETS SÉPARÉS PAR DES LIGNES ET LES FLÈCHES AU MILIEU DES CÔTÉS */}
+        {/* EN MILIEU : LE GRAND CADRE AVEC LES SUJETS */}
         <section className="relative my-1">
-          {/* Flèche gauche : au milieu du côté gauche */}
           {totalPages > 1 && (
             <button
               type="button"
@@ -150,7 +163,6 @@ export const HomePage: React.FC<HomePageProps> = ({
             </button>
           )}
 
-          {/* Flèche droite : au milieu du côté droit */}
           {totalPages > 1 && (
             <button
               type="button"
@@ -163,11 +175,10 @@ export const HomePage: React.FC<HomePageProps> = ({
             </button>
           )}
 
-          {/* Contenu du grand cadre */}
           <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden">
             <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 text-xs">
               <span className="font-semibold text-slate-800">
-                {currentTheme !== 'Tous' ? currentTheme : 'Sujets doctoraux'}
+                {currentTheme !== 'Tous' ? currentTheme : 'Sujets doctoraux disponibles'}
               </span>
 
               {totalPages > 1 && (
@@ -179,7 +190,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
             {currentSubjects.length === 0 ? (
               <div className="py-10 text-center text-xs text-slate-500">
-                Aucun sujet ne correspond à votre recherche.
+                Aucun sujet disponible pour le moment.
               </div>
             ) : (
               <div className="divide-y divide-slate-100">
@@ -235,14 +246,14 @@ export const HomePage: React.FC<HomePageProps> = ({
           </div>
         </section>
 
-        {/* EN BAS : DESCRIPTION INSTITUTIONNELLE ARGUMENTÉE */}
+        {/* EN BAS : DESCRIPTION INSTITUTIONNELLE */}
         {!isCandidateMode && (
           <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs text-xs text-slate-600 leading-relaxed mt-2">
             <span className="font-semibold text-slate-900 block mb-1">
               Centre d’Études Doctorales (CEDoc) — EST Fès
             </span>
             <p>
-              Le Centre d’Études Doctorales de l’École Supérieure de Technologie de Fès fédère l’ensemble des structures et laboratoires de recherche accrédités au sein de l’Université Sidi Mohamed Ben Abdellah. Il assure la coordination pédagogique et l’instruction scientifique rigoureuse des candidatures au cycle doctoral pour former des chercheurs qualifiés répondant aux défis technologiques contemporains.
+              Le Centre d’Études Doctorales de l’École Supérieure de Technologie de Fès fédère l’ensemble des structures et laboratoires de recherche accrédités au sein de l’Université Sidi Mohamed Ben Abdellah. Chaque sujet de recherche doctorale est unique et attribué à un seul doctorant retenu après délibération de la commission scientifique.
             </p>
           </section>
         )}

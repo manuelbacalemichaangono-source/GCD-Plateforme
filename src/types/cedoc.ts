@@ -1,4 +1,4 @@
-export type StatutSujet = 'En attente' | 'Publié' | 'Refusé' | 'Rejeté';
+export type StatutSujet = 'En attente' | 'Publié' | 'Refusé' | 'Rejeté' | 'Attribué';
 
 export type StatutCandidature =
   | 'Compte créé'
@@ -28,6 +28,9 @@ export interface SujetRecord {
   prerequis?: string;
   actif?: boolean;
   ecarte?: boolean;
+  attribue?: boolean;
+  candidatRetenuNom?: string;
+  candidatRetenuEmail?: string;
 }
 
 export interface DirecteurProfile {
@@ -55,10 +58,11 @@ export interface CandidaturePourDirecteur {
   diplomeObtenu: string;
   sujetId: string;
   sujetIntitule: string;
+  directeurNom: string;
   dateDepot: string;
   decisionDirecteur: 'En attente' | 'Retenue' | 'Rejetée';
   motifRejet?: string;
-  pieces: Record<string, { fileName: string; type: string; downloadUrl?: string }>;
+  pieces: Record<string, { fileName: string; type: string; downloadUrl?: string; sizeFormatted?: string; dateFormatted?: string; previewUrl?: string }>;
 }
 
 export interface LaboratoireRecord {

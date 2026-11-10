@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogOut, Bell, CheckCircle2, Clock } from 'lucide-react';
+import { LogOut, Bell, CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
@@ -7,28 +7,10 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ onOpenAuth }) => {
-  const { user, profile, logout, candidature } = useAuth();
+  const { user, profile, logout, candidateNotifications, markNotificationRead } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // Notifications basées sur le statut réel de la candidature
-  const notifications = [
-    {
-      id: 'notif_1',
-      title: 'Campagne de candidature 2026/2027',
-      time: 'Aujourd’hui',
-      read: false,
-    },
-    ...(candidature && candidature.statut !== 'En dépôt'
-      ? [
-          {
-            id: 'notif_2',
-            title: `Statut dossier : ${candidature.statut}`,
-            time: 'Récemment',
-            read: false,
-          },
-        ]
-      : []),
-  ];
+  const hasUnread = candidateNotifications.some((n) => !n.read);
 
   return (
     <header className="desktop-header">
@@ -63,6 +45,10 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAuth }) => {
           </div>
         ) : (
           <div className="flex items-center gap-4">
+            <span className="text-xs font-semibold text-slate-700 hidden sm:inline">
+              {profile.prenom} {profile.nom}
+            </span>
+
             {/* Cloche de notifications avec panneau déroulant */}
             <div className="relative">
               <button
@@ -72,42 +58,71 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAuth }) => {
                 title="Notifications"
               >
                 <Bell className="w-4 h-4" />
-                {notifications.some((n) => !n.read) && (
+                {hasUnread && (
                   <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-600 ring-2 ring-white" />
                 )}
               </button>
 
               {showNotifications && (
                 <div
-                  className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-3 flex flex-col gap-2"
+                  className="absolute right-0 mt-2 w-84 bg-white border border-slate-200 rounded-xl shadow-lg z-50 p-3 flex flex-col gap-2"
                   onMouseLeave={() => setShowNotifications(false)}
                 >
                   <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                     <span className="font-semibold text-xs text-slate-800">
-                      Notifications
+                      Notifications ({candidateNotifications.length})
                     </span>
-                    <span className="text-[11px] text-blue-600 font-medium">
-                      {notifications.length}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowNotifications(false)}
+                      className="text-slate-400 hover:text-slate-600 text-xs"
+                    >
+                      Fermer
+                    </button>
                   </div>
 
-                  <div className="flex flex-col gap-2">
-                    {notifications.map((n) => (
-                      <div
-                        key={n.id}
-                        className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-start gap-2.5 text-xs"
-                      >
-                        <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                        <div className="flex-1">
-                          <p className="font-medium text-slate-800 leading-tight">
-                            {n.title}
-                          </p>
-                          <span className="text-[10px] text-slate-400 mt-1 block">
-                            {n.time}
-                          </span>
+                  <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
+                    {candidateNotifications.length === 0 ? (
+                      <p className="py-3 text-center text-xs text-slate-400">
+                        Aucune notification.
+                      </p>
+                    ) : (
+                      candidateNotifications.map((n) => (
+                        <div
+                          key={n.id}
+                          onClick={() => markNotificationRead(n.id)}
+                          className={`p-2.5 rounded-lg border text-xs cursor-pointer transition-colors flex items-start gap-2.5 ${
+                            n.type === 'success'
+                              ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+                              : n.type === 'danger'
+                              ? 'bg-red-50/70 border-red-200 text-red-900'
+                              : 'bg-slate-50 border-slate-100 text-slate-800'
+                          }`}
+                        >
+                          {n.type === 'success' ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                          ) : n.type === 'danger' ? (
+                            <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                          ) : (
+                            <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                          )}
+
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold leading-snug">
+                              {n.title}
+                            </p>
+                            {n.detail && (
+                              <p className="text-[11px] mt-0.5 leading-relaxed opacity-90">
+                                {n.detail}
+                              </p>
+                            )}
+                            <span className="text-[10px] text-slate-400 mt-1 block">
+                              {n.date}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </div>
               )}
