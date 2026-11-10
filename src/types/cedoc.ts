@@ -62,6 +62,10 @@ export interface CandidaturePourDirecteur {
   dateDepot: string;
   decisionDirecteur: 'En attente' | 'Retenue' | 'Rejetée';
   motifRejet?: string;
+  convocationDate?: string;
+  convocationHeure?: string;
+  convocationLieu?: string;
+  convocationInstructions?: string;
   pieces: Record<string, { fileName: string; type: string; downloadUrl?: string; sizeFormatted?: string; dateFormatted?: string; previewUrl?: string }>;
 }
 
@@ -101,7 +105,9 @@ export interface CandidatureRecord {
   statut: StatutCandidature;
   dateSoumission?: string;
   convocationDate?: string;
+  convocationHeure?: string;
   convocationLieu?: string;
+  convocationInstructions?: string;
   nouveauDelai?: string;
   motifRejet?: string;
 }

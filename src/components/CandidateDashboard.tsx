@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Home as HomeIcon,
   FileText,
@@ -9,6 +9,8 @@ import {
   Trash2,
   Bell,
   Calendar,
+  Clock,
+  MapPin,
   UserCheck,
   ChevronDown,
   ChevronUp,
@@ -111,8 +113,22 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   );
 
   const isEnvoyee = mySentCandidatures.length > 0 || (!!candidature && candidature.statut !== 'En dépôt');
-  const hasRetenue = mySentCandidatures.some((c) => c.decisionDirecteur === 'Retenue');
+  const candRetenue = mySentCandidatures.find((c) => c.decisionDirecteur === 'Retenue') || (candidature?.statut === 'Convoqué' ? candidature : null);
+  const hasRetenue = !!candRetenue;
   const allRejetees = mySentCandidatures.length > 0 && mySentCandidatures.every((c) => c.decisionDirecteur === 'Rejetée');
+
+  const convocationData = useMemo(() => {
+    if (!hasRetenue) return null;
+    const fromSent = mySentCandidatures.find((c) => c.decisionDirecteur === 'Retenue');
+    return {
+      date: fromSent?.convocationDate || candidature?.convocationDate || '24 novembre 2026',
+      heure: fromSent?.convocationHeure || candidature?.convocationHeure || '10:00',
+      lieu: fromSent?.convocationLieu || candidature?.convocationLieu || 'Salle des actes, EST Fès',
+      instructions: fromSent?.convocationInstructions || candidature?.convocationInstructions,
+      sujetIntitule: fromSent?.sujetIntitule || candidature?.sujetsChoisis?.[0]?.intitule || 'Sujet doctoral sélectionné',
+      directeurNom: fromSent?.directeurNom || candidature?.sujetsChoisis?.[0]?.directeur || 'Directeur de thèse',
+    };
+  }, [hasRetenue, mySentCandidatures, candidature]);
 
   /*
     RÈGLES FORMELLES DES COULEURS DE PROGRESSION :
@@ -297,6 +313,35 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                           </div>
                         )}
 
+                        {/* Détails de la convocation si retenue */}
+                        {isRetenue && (cand.convocationDate || cand.convocationHeure || cand.convocationLieu) && (
+                          <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-lg flex flex-col gap-2 text-xs">
+                            <span className="font-bold text-emerald-900 flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-emerald-700" />
+                              <span>Convocation officielle à l’entretien fixée par le directeur :</span>
+                            </span>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-white/90 p-2 rounded border border-emerald-200 text-slate-800">
+                              <div>
+                                <span className="text-[10px] text-slate-400 block font-bold uppercase">Date</span>
+                                <span className="font-bold">{cand.convocationDate}</span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-slate-400 block font-bold uppercase">Heure</span>
+                                <span className="font-bold">{cand.convocationHeure}</span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-slate-400 block font-bold uppercase">Lieu ou lien</span>
+                                <span className="font-bold truncate block" title={cand.convocationLieu}>{cand.convocationLieu}</span>
+                              </div>
+                            </div>
+                            {cand.convocationInstructions && (
+                              <div className="text-[11px] text-slate-700 bg-white/70 p-2 rounded border border-emerald-200">
+                                <strong>Consignes : </strong>{cand.convocationInstructions}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Bouton d'annulation de la candidature (actif tant que le dossier n'a pas été évalué) */}
                         {cand.decisionDirecteur === 'En attente' && (
                           <div className="pt-1 flex items-center justify-end">
@@ -363,6 +408,77 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   })}
                 </div>
               </div>
+
+              {/* DÉTAILS DE LA CONVOCATION À L'ENTRETIEN */}
+              {hasRetenue && convocationData && (
+                <div className="p-5 rounded-xl border border-emerald-300 bg-emerald-50/40 flex flex-col gap-3.5">
+                  <div className="flex items-center justify-between pb-2 border-b border-emerald-200/60">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                        <Calendar className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-sm text-emerald-950">
+                          Convocation officielle à l’entretien scientifique
+                        </h3>
+                        <span className="text-[11px] text-emerald-800">
+                          Votre dossier a été validé et retenu par Pr. {convocationData.directeurNom}.
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-1 rounded-full">
+                      Candidat retenu
+                    </span>
+                  </div>
+
+                  <div className="text-xs text-slate-800 bg-white/80 p-2.5 rounded-lg border border-emerald-200">
+                    <span className="font-medium text-slate-500">Sujet de thèse : </span>
+                    <span className="font-bold text-slate-900">{convocationData.sujetIntitule}</span>
+                  </div>
+
+                  {/* Les 3 données clés obligatoires : date fixée, heure exacte, lieu ou lien */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div className="bg-white p-3 rounded-lg border border-emerald-200 flex flex-col gap-1 shadow-2xs">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-emerald-600" /> Date fixée
+                      </span>
+                      <span className="font-bold text-slate-900 text-sm">
+                        {convocationData.date || 'À déterminer'}
+                      </span>
+                    </div>
+
+                    <div className="bg-white p-3 rounded-lg border border-emerald-200 flex flex-col gap-1 shadow-2xs">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-emerald-600" /> Heure exacte
+                      </span>
+                      <span className="font-bold text-slate-900 text-sm">
+                        {convocationData.heure || '10:00'}
+                      </span>
+                    </div>
+
+                    <div className="bg-white p-3 rounded-lg border border-emerald-200 flex flex-col gap-1 shadow-2xs">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-emerald-600" /> Lieu ou lien
+                      </span>
+                      <span className="font-bold text-slate-900 text-sm truncate" title={convocationData.lieu}>
+                        {convocationData.lieu || 'Salle des actes, EST Fès'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Consignes ou instructions additionnelles */}
+                  {convocationData.instructions && (
+                    <div className="bg-white p-3 rounded-lg border border-emerald-200 text-xs text-slate-700 flex flex-col gap-1">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Consignes ou instructions additionnelles du jury :
+                      </span>
+                      <p className="text-slate-800 leading-relaxed font-medium">
+                        {convocationData.instructions}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* JOURNAL DES NOTIFICATIONS */}

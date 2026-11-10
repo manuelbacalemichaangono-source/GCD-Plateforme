@@ -68,7 +68,12 @@ interface AuthContextValue {
   toggleSujetActif: (sujetId: string) => void;
   ecarterSujet: (sujetId: string) => void;
   retablirSujet: (sujetId: string) => void;
-  deciderCandidatureDirecteur: (candidatureId: string, decision: 'Retenue' | 'Rejetée', motif?: string) => void;
+  deciderCandidatureDirecteur: (
+    candidatureId: string,
+    decision: 'Retenue' | 'Rejetée',
+    motif?: string,
+    convocation?: { date: string; heure: string; lieu: string; instructions?: string }
+  ) => void;
   annulerCandidature: (candId: string, sujetId: string) => void;
   saveCandidatureDossier: (
     sujets: SujetRecord[],
@@ -556,7 +561,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const deciderCandidatureDirecteur = (
     candidatureId: string,
     decision: 'Retenue' | 'Rejetée',
-    motif?: string
+    motif?: string,
+    convocation?: { date: string; heure: string; lieu: string; instructions?: string }
   ) => {
     const targetCand = candidaturesDirecteurList.find((c) => c.id === candidatureId);
 
@@ -570,6 +576,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 decision === 'Rejetée'
                   ? motif || 'Profil non en adéquation avec les prérequis du sujet.'
                   : undefined,
+              convocationDate: decision === 'Retenue' ? convocation?.date : undefined,
+              convocationHeure: decision === 'Retenue' ? convocation?.heure : undefined,
+              convocationLieu: decision === 'Retenue' ? convocation?.lieu : undefined,
+              convocationInstructions: decision === 'Retenue' ? convocation?.instructions : undefined,
             }
           : c
       )
@@ -591,25 +601,69 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         )
       );
 
-      if (
-        user &&
-        (user.email || profile.email).toLowerCase() === targetCand.candidatEmail.toLowerCase()
-      ) {
-        setCandidature((prev) => ({
-          candidatId: user.uid,
-          nom: profile.nom,
-          prenom: profile.prenom,
-          email: user.email || profile.email,
-          cne: profile.cne,
+      // Synchronisation directe avec le profil du candidat
+      setCandidature((prev) => {
+        const currentSujets =
+          prev?.sujetsChoisis && prev.sujetsChoisis.length > 0
+            ? prev.sujetsChoisis
+            : [
+                sujetsList.find((s) => s.id === targetCand.sujetId) || {
+                  id: targetCand.sujetId,
+                  intitule: targetCand.sujetIntitule,
+                  description: '',
+                  discipline: 'Doctorat',
+                  directeur: targetCand.directeurNom,
+                  directeurEmail: '',
+                  laboratoire: 'Laboratoire CEDoc EST Fès',
+                  statut: 'Attribué' as any,
+                },
+              ];
+
+        return {
+          candidatId: prev?.candidatId || targetCand.candidatId,
+          nom: targetCand.candidatNom,
+          prenom: targetCand.candidatPrenom,
+          email: targetCand.candidatEmail,
+          cne: targetCand.cne,
           universiteOrigine: 'EST Fès',
           recuperationAuto: false,
-          sujetsChoisis: prev?.sujetsChoisis || [],
+          sujetsChoisis: currentSujets,
           statut: 'Convoqué',
           dateSoumission: targetCand.dateDepot,
-          convocationDate: 'Mardi 24 novembre 2026 à 10h00',
-          convocationLieu: 'Salle des actes, EST Fès',
-        }));
+          convocationDate: convocation?.date,
+          convocationHeure: convocation?.heure,
+          convocationLieu: convocation?.lieu,
+          convocationInstructions: convocation?.instructions,
+        };
+      });
+
+      // Synchronisation Firestore
+      try {
+        const candRef = doc(db, 'candidatures', targetCand.candidatId);
+        updateDoc(candRef, {
+          statut: 'Convoqué',
+          convocationDate: convocation?.date || '',
+          convocationHeure: convocation?.heure || '',
+          convocationLieu: convocation?.lieu || '',
+          convocationInstructions: convocation?.instructions || '',
+          updatedAt: serverTimestamp(),
+        }).catch(() => {});
+      } catch {
+        // Fallback local
       }
+
+      // Notification en temps réel pour le candidat
+      setCandidateNotifications((prev) => [
+        {
+          id: 'notif_convoc_' + Date.now(),
+          title: 'Convocation à l’entretien',
+          detail: `Votre dossier a été validé et retenu par Pr. ${targetCand.directeurNom} pour le sujet « ${targetCand.sujetIntitule} ». Entretien fixé le ${convocation?.date || ''} à ${convocation?.heure || ''} au lieu : ${convocation?.lieu || ''}.`,
+          date: 'À l’instant',
+          type: 'info',
+          read: false,
+        },
+        ...prev,
+      ]);
     } else if (decision === 'Rejetée' && targetCand) {
       if (
         user &&

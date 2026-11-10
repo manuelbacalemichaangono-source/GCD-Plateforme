@@ -15,6 +15,9 @@ import {
   Check,
   Download,
   Award,
+  Calendar,
+  Clock,
+  MapPin,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -62,6 +65,29 @@ export const DirecteurDashboard: React.FC = () => {
     isOpen: false,
     candidatureId: '',
     motif: '',
+    error: null,
+  });
+
+  // État modale de convocation obligatoire pour retenir un candidat
+  const [convocationModal, setConvocationModal] = useState<{
+    isOpen: boolean;
+    candidatureId: string;
+    candidatNom: string;
+    sujetIntitule: string;
+    date: string;
+    heure: string;
+    lieu: string;
+    instructions: string;
+    error: string | null;
+  }>({
+    isOpen: false,
+    candidatureId: '',
+    candidatNom: '',
+    sujetIntitule: '',
+    date: '',
+    heure: '',
+    lieu: '',
+    instructions: '',
     error: null,
   });
 
@@ -137,9 +163,55 @@ export const DirecteurDashboard: React.FC = () => {
     return mesCandidatures.find((c) => c.id === selectedCandidatId) || null;
   }, [mesCandidatures, selectedCandidatId]);
 
-  // Retenir un candidat : règle formelle d'attribution exclusive du sujet
-  const handleRetenir = (candidatureId: string) => {
-    deciderCandidatureDirecteur(candidatureId, 'Retenue');
+  // Déployer obligatoirement le formulaire de convocation à l'entretien
+  const handleOpenConvocationModal = (cand: typeof mesCandidatures[0]) => {
+    setConvocationModal({
+      isOpen: true,
+      candidatureId: cand.id,
+      candidatNom: `${cand.candidatPrenom} ${cand.candidatNom}`,
+      sujetIntitule: cand.sujetIntitule,
+      date: '',
+      heure: '',
+      lieu: '',
+      instructions: '',
+      error: null,
+    });
+  };
+
+  const handleConfirmConvocation = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!convocationModal.date.trim() || !convocationModal.heure.trim() || !convocationModal.lieu.trim()) {
+      setConvocationModal((prev) => ({
+        ...prev,
+        error: 'Veuillez renseigner les trois champs obligatoires : Date, Heure et Lieu ou lien de l’entretien.',
+      }));
+      return;
+    }
+
+    deciderCandidatureDirecteur(
+      convocationModal.candidatureId,
+      'Retenue',
+      undefined,
+      {
+        date: convocationModal.date.trim(),
+        heure: convocationModal.heure.trim(),
+        lieu: convocationModal.lieu.trim(),
+        instructions: convocationModal.instructions.trim(),
+      }
+    );
+
+    setConvocationModal({
+      isOpen: false,
+      candidatureId: '',
+      candidatNom: '',
+      sujetIntitule: '',
+      date: '',
+      heure: '',
+      lieu: '',
+      instructions: '',
+      error: null,
+    });
+    setSelectedCandidatId(null);
   };
 
   const handleOpenRejetModal = (candidatureId: string) => {
@@ -710,11 +782,33 @@ export const DirecteurDashboard: React.FC = () => {
 
             {/* Décision déjà prise */}
             {selectedCandidature.decisionDirecteur === 'Retenue' && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>
-                  <strong>Candidature retenue.</strong> Le sujet a été réservé et masqué du catalogue public.
-                </span>
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900 flex flex-col gap-2">
+                <div className="flex items-center gap-2 font-bold">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Candidature retenue · Convocation à l’entretien enregistrée</span>
+                </div>
+                {selectedCandidature.convocationDate && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-white/85 p-2.5 rounded border border-emerald-200 text-slate-800">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-bold uppercase">Date de l'entretien</span>
+                      <span className="font-bold">{selectedCandidature.convocationDate}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-bold uppercase">Heure fixée</span>
+                      <span className="font-bold">{selectedCandidature.convocationHeure}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-bold uppercase">Lieu ou lien</span>
+                      <span className="font-bold truncate block" title={selectedCandidature.convocationLieu}>{selectedCandidature.convocationLieu}</span>
+                    </div>
+                  </div>
+                )}
+                {selectedCandidature.convocationInstructions && (
+                  <div className="text-[11px] text-slate-700 bg-white/70 p-2 rounded border border-emerald-200">
+                    <span className="font-bold text-slate-800">Consignes additionnelles : </span>
+                    <span>{selectedCandidature.convocationInstructions}</span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -727,26 +821,36 @@ export const DirecteurDashboard: React.FC = () => {
 
             {/* Actions : Retenir ou Rejeter */}
             <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => handleOpenRejetModal(selectedCandidature.id)}
-                className="inline-flex items-center gap-1.5 px-4 h-[38px] rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold transition-colors"
-              >
-                <XCircle className="w-4 h-4" />
-                <span>Rejeter la candidature</span>
-              </button>
+              {selectedCandidature.decisionDirecteur !== 'Retenue' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenRejetModal(selectedCandidature.id)}
+                    className="inline-flex items-center gap-1.5 px-4 h-[38px] rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold transition-colors"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    <span>Rejeter la candidature</span>
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  handleRetenir(selectedCandidature.id);
-                  setSelectedCandidatId(null);
-                }}
-                className="inline-flex items-center gap-1.5 px-5 h-[38px] rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors shadow-xs"
-              >
-                <Check className="w-4 h-4 stroke-[2.5]" />
-                <span>Retenir pour l’entretien</span>
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenConvocationModal(selectedCandidature)}
+                    className="inline-flex items-center gap-1.5 px-5 h-[38px] rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors shadow-xs"
+                  >
+                    <Check className="w-4 h-4 stroke-[2.5]" />
+                    <span>Retenir pour l’entretien</span>
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleOpenConvocationModal(selectedCandidature)}
+                  className="inline-flex items-center gap-1.5 px-4 h-[38px] rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold transition-colors"
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>Modifier la convocation</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -893,6 +997,160 @@ export const DirecteurDashboard: React.FC = () => {
                   className="btn-primary text-xs h-[34px] px-3.5 bg-red-600 border-red-600 hover:bg-red-700"
                 >
                   Confirmer le rejet
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE DE CONVOCATION OBLIGATOIRE POUR RETENIR UN CANDIDAT */}
+      {convocationModal.isOpen && (
+        <div
+          className="modal-overlay"
+          onClick={() => setConvocationModal((prev) => ({ ...prev, isOpen: false }))}
+        >
+          <div
+            className="modal-content max-w-lg p-6 bg-white border border-slate-200 rounded-xl shadow-xl flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shrink-0">
+                  <Calendar className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h2 className="font-display font-bold text-base text-slate-900 leading-tight">
+                    Convocation à l’entretien
+                  </h2>
+                  <span className="text-xs text-slate-500">
+                    Candidat : <strong className="text-slate-800">{convocationModal.candidatNom}</strong>
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setConvocationModal((prev) => ({ ...prev, isOpen: false }))}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200 leading-relaxed">
+              Pour valider et retenir ce candidat, veuillez renseigner les trois informations obligatoires pour la convocation officielle à l’entretien scientifique.
+            </div>
+
+            {convocationModal.error && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{convocationModal.error}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleConfirmConvocation} className="flex flex-col gap-3.5 text-xs">
+              {/* 1. Date de l'entretien (Obligatoire) */}
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Date de l’entretien</span>
+                  <span className="text-red-500 font-bold">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={convocationModal.date}
+                  onChange={(e) =>
+                    setConvocationModal((prev) => ({
+                      ...prev,
+                      date: e.target.value,
+                      error: null,
+                    }))
+                  }
+                  className="form-input text-xs h-[38px] w-full"
+                  required
+                />
+              </div>
+
+              {/* 2. Heure de l'entretien (Obligatoire) */}
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Heure de l’entretien</span>
+                  <span className="text-red-500 font-bold">*</span>
+                </label>
+                <input
+                  type="time"
+                  value={convocationModal.heure}
+                  onChange={(e) =>
+                    setConvocationModal((prev) => ({
+                      ...prev,
+                      heure: e.target.value,
+                      error: null,
+                    }))
+                  }
+                  className="form-input text-xs h-[38px] w-full"
+                  required
+                />
+              </div>
+
+              {/* 3. Lieu ou lien de l'entretien (Obligatoire) */}
+              <div>
+                <label className="block font-semibold text-slate-800 mb-1 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Lieu ou lien de l’entretien</span>
+                  <span className="text-red-500 font-bold">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex : Salle de réunion B2, EST Fès OU https://meet.google.com/..."
+                  value={convocationModal.lieu}
+                  onChange={(e) =>
+                    setConvocationModal((prev) => ({
+                      ...prev,
+                      lieu: e.target.value,
+                      error: null,
+                    }))
+                  }
+                  className="form-input text-xs h-[38px] w-full"
+                  required
+                />
+              </div>
+
+              {/* 4. Instructions additionnelles (Facultatives) */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Consignes ou instructions additionnelles (facultatif)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Ex : Prévoir une présentation orale de 15 minutes sur vos travaux antérieurs et la méthodologie."
+                  value={convocationModal.instructions}
+                  onChange={(e) =>
+                    setConvocationModal((prev) => ({
+                      ...prev,
+                      instructions: e.target.value,
+                    }))
+                  }
+                  className="form-textarea text-xs w-full"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setConvocationModal((prev) => ({ ...prev, isOpen: false }))}
+                  className="btn-secondary text-xs h-[36px] px-4"
+                >
+                  Annuler
+                </button>
+
+                <button
+                  type="submit"
+                  className="btn-primary text-xs h-[36px] px-4.5 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 text-white font-semibold flex items-center gap-1.5 shadow-xs"
+                >
+                  <Check className="w-4 h-4 stroke-[2.5]" />
+                  <span>Confirmer la convocation</span>
                 </button>
               </div>
             </form>
