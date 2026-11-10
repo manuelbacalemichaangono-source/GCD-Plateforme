@@ -9,6 +9,7 @@ import { DirecteurDashboard } from './components/DirecteurDashboard';
 import { CartView } from './components/CartView';
 import { SubjectDetailModal } from './components/SubjectDetailModal';
 import { AuthModal } from './components/AuthModal';
+import { CalendrierView } from './components/CalendrierView';
 import { SujetRecord } from './types/cedoc';
 
 interface ErrorBoundaryState {
@@ -55,8 +56,11 @@ class AppErrorBoundary extends React.Component<
 const MainAppContent: React.FC = () => {
   const { user, directeurUser, activeRole, authReady } = useAuth();
 
-  // Navigation pour visiteur : 'home' ou 'cart' (pleine interface, pas de modal)
+  // Navigation pour visiteur : 'home' ou 'cart'
   const [visitorView, setVisitorView] = useState<'home' | 'cart'>('home');
+
+  // Navigation par onglets supérieurs : 'recherche' (recherche de sujets) ou 'calendrier' (calendrier officiel)
+  const [activeSection, setActiveSection] = useState<'recherche' | 'calendrier'>('recherche');
 
   // Modale d'authentification
   const [authModal, setAuthModal] = useState<{ isOpen: boolean; mode: 'login' | 'register' }>({
@@ -108,23 +112,32 @@ const MainAppContent: React.FC = () => {
   // 2. ESPACE DU CANDIDAT OU PORTAIL VISITEUR
   return (
     <div className="min-h-screen flex flex-col bg-[#F8FAFC] text-slate-900 font-sans">
-      {/* Header fixe (public ou candidat) */}
-      <Header onOpenAuth={handleOpenAuth} />
+      {/* Header fixe avec les 2 liens officiels : Recherche de sujets & Calendrier */}
+      <Header
+        onOpenAuth={handleOpenAuth}
+        activeSection={activeSection}
+        onSelectSection={(sec) => {
+          setActiveSection(sec);
+          if (visitorView === 'cart') setVisitorView('home');
+        }}
+      />
 
       {/* Corps principal : STRICTEMENT séparé entre Visiteur et Candidat */}
       <main className="flex-1">
         {!user ? (
           /* VUE VISITEUR */
-          visitorView === 'home' ? (
-            <HomePage
-              onViewSubjectDetails={handleViewSubjectDetails}
-              onOpenCart={() => setVisitorView('cart')}
-            />
-          ) : (
+          visitorView === 'cart' ? (
             <CartView
               onBackToHome={() => setVisitorView('home')}
               onOpenAuth={handleOpenAuth}
               onViewSubjectDetails={handleViewSubjectDetails}
+            />
+          ) : activeSection === 'calendrier' ? (
+            <CalendrierView onBackToRecherche={() => setActiveSection('recherche')} />
+          ) : (
+            <HomePage
+              onViewSubjectDetails={handleViewSubjectDetails}
+              onOpenCart={() => setVisitorView('cart')}
             />
           )
         ) : (
@@ -132,6 +145,8 @@ const MainAppContent: React.FC = () => {
           <CandidateDashboard
             onViewSubjectDetails={handleViewSubjectDetails}
             onOpenAuth={handleOpenAuth}
+            activeSection={activeSection}
+            onSelectSection={setActiveSection}
           />
         )}
       </main>

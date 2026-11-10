@@ -225,36 +225,43 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             </div>
 
             <div className="flex flex-col divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden shadow-2xs bg-white">
-              {/* Compte principal du candidat */}
-              <button
-                type="button"
-                onClick={() => handleSelectGoogleAccount('aladinmonroe0@gmail.com', 'Aladin Monroe')}
-                className="p-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left group"
-              >
-                <div className="w-10 h-10 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-sm shadow-xs shrink-0 group-hover:scale-105 transition-transform">
-                  A
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="font-semibold text-xs text-slate-900 block truncate group-hover:text-blue-600">
-                    Aladin Monroe
-                  </span>
-                  <span className="text-[11px] text-slate-500 block truncate">
-                    aladinmonroe0@gmail.com
-                  </span>
-                </div>
-              </button>
+              {/* Choix libre parmi plusieurs comptes Google disponibles */}
+              {[
+                { name: 'Aladin Monroe', email: 'aladinmonroe0@gmail.com', initial: 'A', color: 'bg-blue-600' },
+                { name: 'Manuel Bacale', email: 'bacalemicha@gmail.com', initial: 'M', color: 'bg-emerald-600' },
+                { name: 'Doctorant Chercheur', email: 'candidat.cedoc@gmail.com', initial: 'D', color: 'bg-indigo-600' },
+              ].map((acc) => (
+                <button
+                  key={acc.email}
+                  type="button"
+                  onClick={() => handleSelectGoogleAccount(acc.email, acc.name)}
+                  className="p-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left group"
+                >
+                  <div className={`w-9 h-9 rounded-full ${acc.color} text-white font-bold flex items-center justify-center text-xs shadow-xs shrink-0 group-hover:scale-105 transition-transform`}>
+                    {acc.initial}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="font-semibold text-xs text-slate-900 block truncate group-hover:text-blue-600">
+                      {acc.name}
+                    </span>
+                    <span className="text-[11px] text-slate-500 block truncate">
+                      {acc.email}
+                    </span>
+                  </div>
+                </button>
+              ))}
 
-              {/* Utiliser un autre compte Google */}
+              {/* Option libre : Saisir n'importe quel autre compte Google */}
               {!isEnteringOtherGoogle ? (
                 <button
                   type="button"
                   onClick={() => setIsEnteringOtherGoogle(true)}
                   className="p-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors text-left text-xs font-semibold text-slate-700 hover:text-blue-600"
                 >
-                  <div className="w-10 h-10 rounded-full border border-dashed border-slate-300 flex items-center justify-center text-slate-400 shrink-0">
+                  <div className="w-9 h-9 rounded-full border border-dashed border-slate-300 flex items-center justify-center text-slate-400 shrink-0">
                     <UserIcon className="w-4 h-4" />
                   </div>
-                  <span>Utiliser un autre compte Google</span>
+                  <span>Saisir un autre compte Google...</span>
                 </button>
               ) : (
                 <div className="p-3.5 flex flex-col gap-2.5 bg-slate-50">

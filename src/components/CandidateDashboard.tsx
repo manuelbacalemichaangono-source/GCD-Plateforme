@@ -18,17 +18,22 @@ import { useCart } from '../context/CartContext';
 import { SujetRecord } from '../types/cedoc';
 import { HomePage } from './HomePage';
 import { CartView } from './CartView';
+import { CalendrierView } from './CalendrierView';
 
 interface CandidateDashboardProps {
   initialTab?: 'home' | 'candidature' | 'profil';
   onViewSubjectDetails: (sujet: SujetRecord) => void;
   onOpenAuth: (mode: 'login' | 'register') => void;
+  activeSection?: 'recherche' | 'calendrier';
+  onSelectSection?: (sec: 'recherche' | 'calendrier') => void;
 }
 
 export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   initialTab = 'home',
   onViewSubjectDetails,
   onOpenAuth,
+  activeSection = 'recherche',
+  onSelectSection,
 }) => {
   const {
     user,
@@ -148,11 +153,17 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
       {/* 1. ONGLET HOME */}
       {activeTab === 'home' && (
         !isViewingCart ? (
-          <HomePage
-            onViewSubjectDetails={onViewSubjectDetails}
-            onOpenCart={() => setIsViewingCart(true)}
-            isCandidateMode
-          />
+          activeSection === 'calendrier' ? (
+            <CalendrierView
+              onBackToRecherche={() => onSelectSection && onSelectSection('recherche')}
+            />
+          ) : (
+            <HomePage
+              onViewSubjectDetails={onViewSubjectDetails}
+              onOpenCart={() => setIsViewingCart(true)}
+              isCandidateMode
+            />
+          )
         ) : (
           <CartView
             onBackToHome={() => setIsViewingCart(false)}

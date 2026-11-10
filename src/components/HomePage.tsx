@@ -18,7 +18,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   onOpenCart,
   isCandidateMode = false,
 }) => {
-  const { sujetsList } = useAuth();
+  const { sujetsList, candidaturesDirecteurList } = useAuth();
   const {
     cartItems,
     maxCapacity,
@@ -33,11 +33,18 @@ export const HomePage: React.FC<HomePageProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
 
   // Filtrage des sujets selon disponibilité stricte :
-  // RÈGLE : Un sujet de thèse est UNIQUE à un seul doctorant.
-  // Dès qu'un candidat est retenu pour ce sujet, il devient indisponible et est masqué du catalogue public.
-  // De même s'il est désactivé ou écarté par le directeur de thèse.
+  // RÈGLE FORMELLE : Un sujet de thèse est UNIQUE à un seul doctorant.
+  // Dès qu'une candidature a été transmise pour un sujet, il devient immédiatement indisponible
+  // et masqué du catalogue public et du home candidat (deux doctorants ne peuvent postuler au même thème).
   const filteredSubjects = useMemo(() => {
     return sujetsList.filter((sujet) => {
+      // 1. Sujet déjà postulé par un candidat (indisponible pour tout autre candidat)
+      const isPostule = candidaturesDirecteurList.some((c) => c.sujetId === sujet.id);
+      if (isPostule) {
+        return false;
+      }
+
+      // 2. Sujet attribué définitivement
       if (sujet.attribue || sujet.statut === 'Attribué') {
         return false;
       }

@@ -2,6 +2,7 @@ import React from 'react';
 import { X, Plus, User } from 'lucide-react';
 import { SujetRecord } from '../types/cedoc';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 
 interface SubjectDetailModalProps {
   sujet: SujetRecord | null;
@@ -16,6 +17,7 @@ export const SubjectDetailModal: React.FC<SubjectDetailModalProps> = ({
   onClose,
   onOpenCart,
 }) => {
+  const { candidaturesDirecteurList } = useAuth();
   const {
     isSubjectInCart,
     addToCart,
@@ -26,6 +28,7 @@ export const SubjectDetailModal: React.FC<SubjectDetailModalProps> = ({
 
   if (!isOpen || !sujet) return null;
 
+  const isPostule = candidaturesDirecteurList.some((c) => c.sujetId === sujet.id);
   const inCart = isSubjectInCart(sujet.id);
 
   const handleAction = () => {
@@ -91,22 +94,28 @@ export const SubjectDetailModal: React.FC<SubjectDetailModalProps> = ({
             Fermer
           </button>
 
-          <button
-            type="button"
-            onClick={handleAction}
-            className={inCart && !replacingSubject ? 'btn-secondary text-red-600 border-red-200 hover:bg-red-50' : 'btn-primary'}
-          >
-            {replacingSubject ? (
-              <span>Remplacer avec ce sujet</span>
-            ) : inCart ? (
-              <span>Retirer du panier</span>
-            ) : (
-              <>
-                <Plus className="w-4 h-4" />
-                <span>Ajouter au panier</span>
-              </>
-            )}
-          </button>
+          {isPostule ? (
+            <span className="text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-3.5 py-2 rounded-lg">
+              Indisponible (Candidature déjà transmise)
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={handleAction}
+              className={inCart && !replacingSubject ? 'btn-secondary text-red-600 border-red-200 hover:bg-red-50' : 'btn-primary'}
+            >
+              {replacingSubject ? (
+                <span>Remplacer avec ce sujet</span>
+              ) : inCart ? (
+                <span>Retirer du panier</span>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  <span>Ajouter au panier</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>

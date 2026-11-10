@@ -373,10 +373,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Authentification Google (Sélection de compte Google standard)
   const loginWithGoogle = async (emailOverride?: string, nameOverride?: string) => {
     const emailToUse = (emailOverride || 'aladinmonroe0@gmail.com').trim().toLowerCase();
-    const displayName = nameOverride || (emailToUse.includes('aladin') ? 'Aladin Monroe' : emailToUse.split('@')[0]);
+    const displayName =
+      nameOverride ||
+      (emailToUse.includes('aladin')
+        ? 'Aladin Monroe'
+        : emailToUse.includes('bacale')
+        ? 'Manuel Bacale'
+        : emailToUse.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()));
     const parts = displayName.split(' ');
     const prenom = parts[0] || 'Candidat';
-    const nom = parts.slice(1).join(' ') || 'CEDoc';
+    const nom = parts.slice(1).join(' ') || 'Doctorant';
 
     const simulatedUser: any = {
       uid: 'google_user_' + emailToUse.replace(/[^a-zA-Z0-9]/g, '_'),
