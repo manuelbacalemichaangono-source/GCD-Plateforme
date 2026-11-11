@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, UserCheck, GraduationCap, User as UserIcon, ArrowLeft } from 'lucide-react';
+import { X, UserCheck, GraduationCap, User as UserIcon, ArrowLeft, Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { translateFirebaseAuthError } from '../firebase';
 import { INITIAL_DIRECTEURS } from '../data/initialCatalog';
@@ -24,10 +24,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     loginWithGoogle,
     registerCandidate,
     loginAsDirecteur,
+    loginAsDirecteurCedoc,
   } = useAuth();
 
-  // Rôle sélectionné dans la modale : 'candidat' ou 'directeur'
-  const [selectedRole, setSelectedRole] = useState<'candidat' | 'directeur'>('candidat');
+  // Rôle sélectionné dans la modale : 'candidat', 'directeur' ou 'directeur_cedoc'
+  const [selectedRole, setSelectedRole] = useState<'candidat' | 'directeur' | 'directeur_cedoc'>('candidat');
   const [selectedDirectorId, setSelectedDirectorId] = useState(INITIAL_DIRECTEURS[0].id);
 
   const [nom, setNom] = useState('');
@@ -131,31 +132,44 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Sélecteur de rôle en mode Connexion */}
         {mode === 'login' && (
-          <div className="grid grid-cols-2 gap-2 mt-4 p-1 bg-slate-100 rounded-lg text-xs font-semibold">
+          <div className="grid grid-cols-3 gap-1.5 mt-4 p-1 bg-slate-100 rounded-lg text-[11px] font-semibold">
             <button
               type="button"
               onClick={() => setSelectedRole('candidat')}
-              className={`py-2 px-3 rounded-md transition-all flex items-center justify-center gap-1.5 ${
+              className={`py-2 px-1.5 rounded-md transition-all flex flex-col sm:flex-row items-center justify-center gap-1 text-center ${
                 selectedRole === 'candidat'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <GraduationCap className="w-4 h-4" />
+              <GraduationCap className="w-3.5 h-3.5 shrink-0" />
               <span>Candidat</span>
             </button>
 
             <button
               type="button"
               onClick={() => setSelectedRole('directeur')}
-              className={`py-2 px-3 rounded-md transition-all flex items-center justify-center gap-1.5 ${
+              className={`py-2 px-1.5 rounded-md transition-all flex flex-col sm:flex-row items-center justify-center gap-1 text-center ${
                 selectedRole === 'directeur'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <UserCheck className="w-4 h-4" />
-              <span>Directeur de Thèse</span>
+              <UserCheck className="w-3.5 h-3.5 shrink-0" />
+              <span>Dir. Thèse</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedRole('directeur_cedoc')}
+              className={`py-2 px-1.5 rounded-md transition-all flex flex-col sm:flex-row items-center justify-center gap-1 text-center ${
+                selectedRole === 'directeur_cedoc'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Shield className="w-3.5 h-3.5 shrink-0 text-blue-600" />
+              <span>Dir. CEDoc</span>
             </button>
           </div>
         )}
@@ -166,8 +180,38 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
         )}
 
-        {/* 1. SECTION DIRECTEUR DE THÈSE */}
-        {mode === 'login' && selectedRole === 'directeur' ? (
+        {/* 1. SECTION DIRECTEUR DU CEDOC (Accès direct sans mot de passe) */}
+        {mode === 'login' && selectedRole === 'directeur_cedoc' ? (
+          <div className="mt-4 flex flex-col gap-4">
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs">
+                <Shield className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-display font-bold text-sm text-slate-900">
+                  Pr. Mohammed Amine Bennani
+                </h3>
+                <span className="text-[11px] text-slate-500 font-medium block">
+                  Directeur du Centre d’Études Doctorales (CEDoc EST Fès)
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                loginAsDirecteurCedoc();
+                onClose();
+                if (onSuccessRedirect) onSuccessRedirect();
+              }}
+              className="btn-primary w-full text-xs h-[40px] flex items-center justify-center gap-2"
+            >
+              <Shield className="w-4 h-4" />
+              <span>Accéder à l’espace Directeur du CEDoc</span>
+            </button>
+          </div>
+        ) : mode === 'login' && selectedRole === 'directeur' ? (
+          /* 2. SECTION DIRECTEUR DE THÈSE */
           <div className="mt-4 flex flex-col gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">

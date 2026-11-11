@@ -29,6 +29,8 @@ import {
   CandidateProfile,
   CandidatureRecord,
   DirecteurProfile,
+  DirecteurCedocProfile,
+  EvaluationJury,
   PieceDossierRecord,
   PieceSlotPreselection,
   SujetRecord,
@@ -48,6 +50,23 @@ export interface CandidateNotificationItem {
   read?: boolean;
 }
 
+export interface AdmisOfficielItem {
+  id: string;
+  cne: string;
+  nomComplet: string;
+  sujetIntitule: string;
+  directeurNom: string;
+  discipline: string;
+  dateAdmission: string;
+}
+
+export interface LogCedocItem {
+  id: string;
+  date: string;
+  action: string;
+  auteur: string;
+}
+
 interface AuthContextValue {
   user: User | null;
   authReady: boolean;
@@ -55,26 +74,35 @@ interface AuthContextValue {
   candidature: CandidatureRecord | null;
   piecesMap: Record<string, PieceDossierRecord>;
   directeurUser: DirecteurProfile | null;
-  activeRole: 'candidat' | 'directeur' | null;
+  directeurCedocUser: DirecteurCedocProfile | null;
+  activeRole: 'candidat' | 'directeur' | 'directeur_cedoc' | null;
   sujetsList: SujetRecord[];
   candidaturesDirecteurList: typeof INITIAL_CANDIDATURES_DIRECTEUR;
   candidateNotifications: CandidateNotificationItem[];
+  isListeOfficiellePubliee: boolean;
+  admisOfficielsList: AdmisOfficielItem[];
+  logsCedoc: LogCedocItem[];
   loginWithEmail: (email: string, password: string) => Promise<void>;
   loginWithGoogle: (emailOverride?: string, nameOverride?: string) => Promise<User | null>;
   loginAsDirecteur: (directeurId: string) => void;
+  loginAsDirecteurCedoc: () => void;
   registerCandidate: (nom: string, prenom: string, email: string, password: string) => Promise<User>;
   resetPassword: (email: string) => Promise<void>;
   updateProfileData: (data: Partial<CandidateProfile>) => Promise<void>;
   updateDirecteurProfile: (data: Partial<DirecteurProfile>) => void;
+  updateDirecteurCedocProfile: (data: Partial<DirecteurCedocProfile>) => void;
   toggleSujetActif: (sujetId: string) => void;
   ecarterSujet: (sujetId: string) => void;
   retablirSujet: (sujetId: string) => void;
+  creerSujetCedoc: (nouveau: Omit<SujetRecord, 'id' | 'statut'>) => void;
   deciderCandidatureDirecteur: (
     candidatureId: string,
     decision: 'Retenue' | 'Rejetée',
     motif?: string,
     convocation?: { date: string; heure: string; lieu: string; instructions?: string }
   ) => void;
+  validerPropositionAdmission: (candidatureId: string) => void;
+  publierListeOfficielleAdmis: () => void;
   annulerCandidature: (candId: string, sujetId: string) => void;
   saveCandidatureDossier: (
     sujets: SujetRecord[],
@@ -113,6 +141,19 @@ const DEFAULT_PROFILE: CandidateProfile = {
   anneeDiplome: '2025',
 };
 
+export const DEFAULT_DIRECTEUR_CEDOC: DirecteurCedocProfile = {
+  id: 'dir_cedoc_principal',
+  nom: 'Bennani',
+  prenom: 'Mohammed Amine',
+  nomComplet: 'Pr. Mohammed Amine Bennani',
+  email: 'directeur.cedoc@usmba.ac.ma',
+  telephone: '+212 5 35 60 05 80',
+  titre: 'Directeur du Centre d’Études Doctorales (CEDoc)',
+  etablissement: 'EST Fès - Université Sidi Mohamed Ben Abdellah',
+  departement: 'Direction du CEDoc',
+  avatarUrl: '',
+};
+
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -124,7 +165,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Espace Directeur de Thèse
   const [directeurUser, setDirecteurUser] = useState<DirecteurProfile | null>(null);
-  const [activeRole, setActiveRole] = useState<'candidat' | 'directeur' | null>(null);
+  
+  // Espace Directeur du CEDoc
+  const [directeurCedocUser, setDirecteurCedocUser] = useState<DirecteurCedocProfile | null>(null);
+  const [activeRole, setActiveRole] = useState<'candidat' | 'directeur' | 'directeur_cedoc' | null>(null);
+
+  // Publication officielle des résultats
+  const [isListeOfficiellePubliee, setIsListeOfficiellePubliee] = useState(false);
+  const [admisOfficielsList, setAdmisOfficielsList] = useState<AdmisOfficielItem[]>([]);
+
+  // Registre des logs administratifs du CEDoc
+  const [logsCedoc, setLogsCedoc] = useState<LogCedocItem[]>([
+    {
+      id: 'log_init_01',
+      date: 'Aujourd’hui',
+      action: 'Ouverture de la campagne d’admission doctorale 2026/2027 et synchronisation du catalogue de thèses',
+      auteur: 'Direction du CEDoc',
+    },
+  ]);
 
   // Initialisation propre au démarrage (aucune candidature antérieure, zéro candidatures d'exemple)
   const [sujetsList, setSujetsList] = useState<SujetRecord[]>(INITIAL_SUJETS);
@@ -134,17 +192,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     typeof INITIAL_CANDIDATURES_DIRECTEUR
   >([]);
 
-  // Notifications dynamiques pour le candidat
-  const [candidateNotifications, setCandidateNotifications] = useState<CandidateNotificationItem[]>([
-    {
-      id: 'notif_welcome',
-      title: 'Bienvenue sur la plateforme CEDoc (EST Fès)',
-      detail: 'Campagne de candidature au cycle doctoral ouverte pour l’année universitaire 2026/2027.',
-      date: 'Aujourd’hui',
-      type: 'info',
-      read: false,
-    },
-  ]);
+  // Notifications séparées STRICTEMENT par candidat (quand on change de candidat, on ne voit pas celles d'un autre)
+  const [notificationsByUser, setNotificationsByUser] = useState<Record<string, CandidateNotificationItem[]>>({
+    'aladinmonroe0@gmail.com': [
+      {
+        id: 'notif_welcome_aladin',
+        title: 'Bienvenue sur la plateforme CEDoc (EST Fès)',
+        detail: 'Campagne de candidature au cycle doctoral ouverte pour l’année universitaire 2026/2027.',
+        date: 'Aujourd’hui',
+        type: 'info',
+        read: false,
+      },
+    ],
+  });
+
+  const currentUserEmail = (user?.email || profile.email || '').trim().toLowerCase();
+
+  const candidateNotifications = React.useMemo(() => {
+    if (!currentUserEmail) return [];
+    if (!notificationsByUser[currentUserEmail]) {
+      return [
+        {
+          id: 'notif_welcome_' + currentUserEmail.replace(/[^a-zA-Z0-9]/g, '_'),
+          title: 'Bienvenue sur la plateforme CEDoc (EST Fès)',
+          detail: 'Campagne de candidature au cycle doctoral ouverte pour l’année universitaire 2026/2027.',
+          date: 'Aujourd’hui',
+          type: 'info' as const,
+          read: false,
+        },
+      ];
+    }
+    return notificationsByUser[currentUserEmail];
+  }, [currentUserEmail, notificationsByUser]);
 
   // Purge de toute persistance antérieure au chargement pour réinitialiser l'application en propre
   useEffect(() => {
@@ -298,44 +377,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Synchronisation des notifications du candidat selon les candidatures
   useEffect(() => {
     if (!user) return;
-    const userEmail = (user.email || profile.email).toLowerCase();
+    const userEmail = (user.email || profile.email).trim().toLowerCase();
     const myCands = candidaturesDirecteurList.filter(
-      (c) => c.candidatEmail.toLowerCase() === userEmail
+      (c) => c.candidatEmail.trim().toLowerCase() === userEmail
     );
     if (myCands.length === 0) return;
 
     myCands.forEach((cand) => {
       if (cand.decisionDirecteur === 'Retenue') {
         const notifId = `notif_retenue_${cand.id}`;
-        setCandidateNotifications((prev) => {
-          if (prev.some((n) => n.id === notifId)) return prev;
-          return [
-            {
-              id: notifId,
-              title: `Candidature retenue : ${cand.sujetIntitule}`,
-              detail: `Votre dossier a reçu un avis favorable du ${cand.directeurNom}. Vous êtes convoqué(e) à l’entretien scientifique.`,
-              date: 'Aujourd’hui',
-              type: 'success',
-              read: false,
-            },
+        setNotificationsByUser((prev) => {
+          const list = prev[userEmail] || [];
+          if (list.some((n) => n.id === notifId)) return prev;
+          return {
             ...prev,
-          ];
+            [userEmail]: [
+              {
+                id: notifId,
+                title: `Candidature retenue : ${cand.sujetIntitule}`,
+                detail: `Votre dossier a reçu un avis favorable du ${cand.directeurNom}. Vous êtes convoqué(e) à l’entretien scientifique.`,
+                date: 'Aujourd’hui',
+                type: 'success',
+                read: false,
+              },
+              ...list,
+            ],
+          };
         });
       } else if (cand.decisionDirecteur === 'Rejetée') {
         const notifId = `notif_rejetee_${cand.id}`;
-        setCandidateNotifications((prev) => {
-          if (prev.some((n) => n.id === notifId)) return prev;
-          return [
-            {
-              id: notifId,
-              title: `Candidature non retenue : ${cand.sujetIntitule}`,
-              detail: `Le ${cand.directeurNom} n’a pas retenu votre dossier. Motif : ${cand.motifRejet || 'Prérequis scientifiques insuffisants.'}`,
-              date: 'Aujourd’hui',
-              type: 'danger',
-              read: false,
-            },
+        setNotificationsByUser((prev) => {
+          const list = prev[userEmail] || [];
+          if (list.some((n) => n.id === notifId)) return prev;
+          return {
             ...prev,
-          ];
+            [userEmail]: [
+              {
+                id: notifId,
+                title: `Candidature non retenue : ${cand.sujetIntitule}`,
+                detail: `Le ${cand.directeurNom} n’a pas retenu votre dossier. Motif : ${cand.motifRejet || 'Prérequis scientifiques insuffisants.'}`,
+                date: 'Aujourd’hui',
+                type: 'danger',
+                read: false,
+              },
+              ...list,
+            ],
+          };
         });
       }
     });
@@ -346,6 +433,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
       setActiveRole('candidat');
       setDirecteurUser(null);
+      setDirecteurCedocUser(null);
       setUser(cred.user);
     } catch (err: any) {
       if (
@@ -372,6 +460,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
         setActiveRole('candidat');
         setDirecteurUser(null);
+        setDirecteurCedocUser(null);
         return;
       }
       throw err;
@@ -416,6 +505,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfile(newProf);
     setActiveRole('candidat');
     setDirecteurUser(null);
+    setDirecteurCedocUser(null);
     setAuthReady(true);
     return simulatedUser as User;
   };
@@ -426,8 +516,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setCandidature(null);
     setPiecesMap({});
+    setDirecteurCedocUser(null);
     setDirecteurUser(found);
     setActiveRole('directeur');
+    if (auth.currentUser) {
+      signOut(auth).catch(() => {});
+    }
+  };
+
+  // Connexion en tant que Directeur du CEDoc (Accès direct pour test)
+  const loginAsDirecteurCedoc = () => {
+    setUser(null);
+    setCandidature(null);
+    setPiecesMap({});
+    setDirecteurUser(null);
+    setDirecteurCedocUser(DEFAULT_DIRECTEUR_CEDOC);
+    setActiveRole('directeur_cedoc');
     if (auth.currentUser) {
       signOut(auth).catch(() => {});
     }
@@ -539,6 +643,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDirecteurUser(updated);
   };
 
+  const updateDirecteurCedocProfile = (data: Partial<DirecteurCedocProfile>) => {
+    if (!directeurCedocUser) return;
+    const nextNom = data.nom !== undefined ? data.nom.trim() : directeurCedocUser.nom;
+    const nextPrenom = data.prenom !== undefined ? data.prenom.trim() : directeurCedocUser.prenom;
+    const updated: DirecteurCedocProfile = {
+      ...directeurCedocUser,
+      ...data,
+      nom: nextNom,
+      prenom: nextPrenom,
+      nomComplet: `Pr. ${nextPrenom} ${nextNom}`,
+      email: data.email !== undefined ? data.email.trim() : directeurCedocUser.email,
+    };
+    setDirecteurCedocUser(updated);
+  };
+
   // Actions Directeur : Activer / Désactiver un sujet
   const toggleSujetActif = (sujetId: string) => {
     setSujetsList((prev) =>
@@ -559,6 +678,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   };
 
+  // Action Directeur du CEDoc : Création d'un nouveau sujet de thèse
+  const creerSujetCedoc = (nouveau: Omit<SujetRecord, 'id' | 'statut'>) => {
+    const newSubject: SujetRecord = {
+      ...nouveau,
+      id: 'sujet_cedoc_' + Date.now(),
+      statut: 'Publié',
+      actif: true,
+      ecarte: false,
+      attribue: false,
+    };
+    setSujetsList((prev) => [newSubject, ...prev]);
+    setLogsCedoc((prev) => [
+      {
+        id: 'log_' + Date.now(),
+        date: 'Aujourd’hui',
+        action: `Création du nouveau sujet : « ${newSubject.intitule} » (${newSubject.directeur})`,
+        auteur: 'Direction du CEDoc',
+      },
+      ...prev,
+    ]);
+  };
+
   // Décision Directeur sur une candidature (Retenue / Rejetée)
   const deciderCandidatureDirecteur = (
     candidatureId: string,
@@ -568,12 +709,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ) => {
     const targetCand = candidaturesDirecteurList.find((c) => c.id === candidatureId);
 
+    const juryEval: EvaluationJury | undefined =
+      decision === 'Retenue'
+        ? {
+            noteDossier: 18.0,
+            noteEntretien: 18.5,
+            noteFinale: 18.25,
+            avisJury: 'Très favorable',
+            membresJury: [
+              `Pr. ${targetCand?.directeurNom || 'Directeur de thèse'} (Directeur de thèse)`,
+              'Pr. Karim El Mansouri (Président de commission)',
+              'Pr. Nadia Bennani (Rapporteur & Examinateur)',
+            ],
+            dateEntretien: convocation?.date || '24 novembre 2026',
+            appreciation:
+              'Dossier académique exemplaire. Le candidat a démontré une excellente maîtrise des prérequis et des objectifs de recherche lors de son audition. Proposition d’admission validée avec avis très favorable.',
+            signe: true,
+            dateSignature: convocation?.date || '24 novembre 2026',
+          }
+        : undefined;
+
     setCandidaturesDirecteurList((prev) =>
       prev.map((c) =>
         c.id === candidatureId
           ? {
               ...c,
               decisionDirecteur: decision,
+              evaluationJury: juryEval,
+              validationCedoc: false,
+              statutPublication: 'Non publiée',
               motifRejet:
                 decision === 'Rejetée'
                   ? motif || 'Profil non en adéquation avec les prérequis du sujet.'
@@ -616,7 +780,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   discipline: 'Doctorat',
                   directeur: targetCand.directeurNom,
                   directeurEmail: '',
-                  laboratoire: 'Laboratoire CEDoc EST Fès',
+                  laboratoire: 'CEDoc EST Fès',
                   statut: 'Attribué' as any,
                 },
               ];
@@ -654,18 +818,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Fallback local
       }
 
-      // Notification en temps réel pour le candidat
-      setCandidateNotifications((prev) => [
-        {
-          id: 'notif_convoc_' + Date.now(),
-          title: 'Convocation à l’entretien',
-          detail: `Votre dossier a été validé et retenu par Pr. ${targetCand.directeurNom} pour le sujet « ${targetCand.sujetIntitule} ». Entretien fixé le ${convocation?.date || ''} à ${convocation?.heure || ''} au lieu : ${convocation?.lieu || ''}.`,
-          date: 'À l’instant',
-          type: 'info',
-          read: false,
-        },
+      // Notification en temps réel pour le candidat ciblé
+      const candEmail = targetCand.candidatEmail.trim().toLowerCase();
+      const notifConvoc: CandidateNotificationItem = {
+        id: 'notif_convoc_' + Date.now(),
+        title: 'Convocation à l’entretien scientifique',
+        detail: `Votre dossier a été validé et retenu par Pr. ${targetCand.directeurNom} pour le sujet « ${targetCand.sujetIntitule} ». Entretien fixé le ${convocation?.date || ''} à ${convocation?.heure || ''} au lieu : ${convocation?.lieu || ''}.`,
+        date: 'Aujourd’hui',
+        type: 'info',
+        read: false,
+      };
+
+      setNotificationsByUser((prev) => ({
         ...prev,
-      ]);
+        [candEmail]: [notifConvoc, ...(prev[candEmail] || [])],
+      }));
     } else if (decision === 'Rejetée' && targetCand) {
       if (
         user &&
@@ -686,6 +853,130 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }));
       }
     }
+  };
+
+  // Action Directeur du CEDoc : Valider la proposition d'admission après contrôle réglementaire
+  const validerPropositionAdmission = (candidatureId: string) => {
+    const target = candidaturesDirecteurList.find((c) => c.id === candidatureId);
+    setCandidaturesDirecteurList((prev) =>
+      prev.map((c) =>
+        c.id === candidatureId ? { ...c, validationCedoc: true } : c
+      )
+    );
+
+    if (target) {
+      setLogsCedoc((prev) => [
+        {
+          id: 'log_' + Date.now(),
+          date: 'Aujourd’hui',
+          action: `Validation de la proposition d’admission pour ${target.candidatPrenom} ${target.candidatNom} (Sujet : ${target.sujetIntitule})`,
+          auteur: 'Direction du CEDoc',
+        },
+        ...prev,
+      ]);
+    }
+  };
+
+  // Action Directeur du CEDoc : Publier la liste officielle des admis
+  const publierListeOfficielleAdmis = () => {
+    // Tous les candidats retenus ayant reçu le visa du Directeur du CEDoc
+    const toPublish = candidaturesDirecteurList.filter(
+      (c) => c.decisionDirecteur === 'Retenue'
+    );
+
+    if (toPublish.length === 0) return;
+
+    const todayFormatted = new Date().toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    // 1. Mettre à jour les candidatures en "Admis" et "Publiée"
+    setCandidaturesDirecteurList((prev) =>
+      prev.map((c) => {
+        if (toPublish.some((tp) => tp.id === c.id)) {
+          return {
+            ...c,
+            decisionDirecteur: 'Admis',
+            validationCedoc: true,
+            statutPublication: 'Publiée',
+          };
+        }
+        return c;
+      })
+    );
+
+    // 2. Mettre à jour le statut du candidat dans son dashboard personnel
+    setCandidature((prev) => {
+      if (!prev) return null;
+      const isAdmis = toPublish.some(
+        (tp) => tp.candidatEmail.trim().toLowerCase() === prev.email.trim().toLowerCase()
+      );
+      if (isAdmis) {
+        return {
+          ...prev,
+          statut: 'Admis',
+        };
+      }
+      return prev;
+    });
+
+    // 3. Notifier individuellement chaque candidat admis dans son propre journal
+    toPublish.forEach((cand) => {
+      const candEmail = cand.candidatEmail.trim().toLowerCase();
+      const notifAdmis: CandidateNotificationItem = {
+        id: 'notif_admis_' + cand.id + '_' + Date.now(),
+        title: 'Admission officielle au cycle doctoral (2026/2027)',
+        detail: `Félicitations ! Votre proposition d’admission a été validée par la Direction du CEDoc. Votre nom est désormais inscrit sur la liste officielle des admis affichée publiquement.`,
+        date: todayFormatted,
+        type: 'success',
+        read: false,
+      };
+
+      setNotificationsByUser((prev) => ({
+        ...prev,
+        [candEmail]: [notifAdmis, ...(prev[candEmail] || [])],
+      }));
+
+      // Synchroniser Firestore
+      try {
+        const candRef = doc(db, 'candidatures', cand.candidatId);
+        updateDoc(candRef, {
+          statut: 'Admis',
+          statutPublication: 'Publiée',
+          dateAdmission: todayFormatted,
+          updatedAt: serverTimestamp(),
+        }).catch(() => {});
+      } catch {
+        // Fallback
+      }
+    });
+
+    // 4. Mettre à jour la liste publique des admis officiels
+    const admisItems: AdmisOfficielItem[] = toPublish.map((c) => ({
+      id: c.id,
+      cne: c.cne,
+      nomComplet: `${c.candidatPrenom} ${c.candidatNom}`,
+      sujetIntitule: c.sujetIntitule,
+      directeurNom: c.directeurNom,
+      discipline: sujetsList.find((s) => s.id === c.sujetId)?.discipline || 'Doctorat',
+      dateAdmission: todayFormatted,
+    }));
+
+    setAdmisOfficielsList(admisItems);
+    setIsListeOfficiellePubliee(true);
+
+    // 5. Enregistrer le log officiel
+    setLogsCedoc((prev) => [
+      {
+        id: 'log_pub_' + Date.now(),
+        date: todayFormatted,
+        action: `Publication officielle de la liste des ${toPublish.length} candidat(s) admis au cycle doctoral (Session 2026/2027)`,
+        auteur: 'Pr. Mohammed Amine Bennani',
+      },
+      ...prev,
+    ]);
   };
 
   // Annuler et supprimer définitivement une candidature envoyée
@@ -766,22 +1057,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    // 6. Enregistrer immédiatement dans le Journal des notifications
-    setCandidateNotifications((prev) => [
-      {
-        id: 'notif_annulee_' + Date.now(),
-        title: 'Candidature annulée et supprimée',
-        detail: `Votre candidature pour le sujet « ${targetIntitule} » a été supprimée avec succès. Le sujet a été libéré dans le catalogue officiel.`,
-        date: 'À l’instant',
-        type: 'info',
-        read: false,
-      },
+    // 6. Enregistrer immédiatement dans le Journal des notifications propre à ce candidat
+    const notifAnnule: CandidateNotificationItem = {
+      id: 'notif_annulee_' + Date.now(),
+      title: 'Candidature annulée et supprimée',
+      detail: `Votre candidature pour le sujet « ${targetIntitule} » a été supprimée avec succès. Le sujet a été libéré dans le catalogue officiel.`,
+      date: 'À l’instant',
+      type: 'info',
+      read: false,
+    };
+
+    setNotificationsByUser((prev) => ({
       ...prev,
-    ]);
+      [userEmail]: [notifAnnule, ...(prev[userEmail] || [])],
+    }));
   };
 
   const markAllNotificationsRead = () => {
-    setCandidateNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    if (!currentUserEmail) return;
+    setNotificationsByUser((prev) => ({
+      ...prev,
+      [currentUserEmail]: (prev[currentUserEmail] || []).map((n) => ({ ...n, read: true })),
+    }));
   };
 
   const saveCandidatureDossier = async (
@@ -911,17 +1208,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       dateSoumission: todayFormatted,
     });
 
-    setCandidateNotifications((prev) => [
-      {
-        id: 'notif_sent_' + Date.now(),
-        title: `Candidature transmise (${chosenSujets.length} sujet${chosenSujets.length > 1 ? 's' : ''})`,
-        detail: `Votre dossier a été transmis pour : ${chosenSujets.map((s) => `« ${s.intitule} » (${s.directeur})`).join(' et ')}.`,
-        date: todayFormatted,
-        type: 'info',
-        read: false,
-      },
+    const notifSent: CandidateNotificationItem = {
+      id: 'notif_sent_' + Date.now(),
+      title: `Candidature transmise (${chosenSujets.length} sujet${chosenSujets.length > 1 ? 's' : ''})`,
+      detail: `Votre dossier a été transmis pour : ${chosenSujets.map((s) => `« ${s.intitule} » (${s.directeur})`).join(' et ')}.`,
+      date: todayFormatted,
+      type: 'info',
+      read: false,
+    };
+
+    setNotificationsByUser((prev) => ({
       ...prev,
-    ]);
+      [candidateEmail]: [notifSent, ...(prev[candidateEmail] || [])],
+    }));
   };
 
   const saveUploadedPiece = async (
@@ -999,14 +1298,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const markNotificationRead = (id: string) => {
-    setCandidateNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
+    if (!currentUserEmail) return;
+    setNotificationsByUser((prev) => ({
+      ...prev,
+      [currentUserEmail]: (prev[currentUserEmail] || []).map((n) =>
+        n.id === id ? { ...n, read: true } : n
+      ),
+    }));
   };
 
   const logout = async () => {
     setUser(null);
     setDirecteurUser(null);
+    setDirecteurCedocUser(null);
     setActiveRole(null);
     setCandidature(null);
     setPiecesMap({});
@@ -1026,21 +1330,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         candidature,
         piecesMap,
         directeurUser,
+        directeurCedocUser,
         activeRole,
         sujetsList,
         candidaturesDirecteurList,
         candidateNotifications,
+        isListeOfficiellePubliee,
+        admisOfficielsList,
+        logsCedoc,
         loginWithEmail,
         loginWithGoogle,
         loginAsDirecteur,
+        loginAsDirecteurCedoc,
         registerCandidate,
         resetPassword,
         updateProfileData,
         updateDirecteurProfile,
+        updateDirecteurCedocProfile,
         toggleSujetActif,
         ecarterSujet,
         retablirSujet,
+        creerSujetCedoc,
         deciderCandidatureDirecteur,
+        validerPropositionAdmission,
+        publierListeOfficielleAdmis,
         annulerCandidature,
         saveCandidatureDossier,
         submitCandidatureFinale,

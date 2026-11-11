@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Calendar } from 'lucide-react';
+import { Search, Calendar, Award } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 import { Header } from './components/Header';
@@ -7,6 +7,8 @@ import { Footer } from './components/Footer';
 import { HomePage } from './components/HomePage';
 import { CandidateDashboard } from './components/CandidateDashboard';
 import { DirecteurDashboard } from './components/DirecteurDashboard';
+import { DirecteurCedocDashboard } from './components/DirecteurCedocDashboard';
+import { ResultatsOfficielsView } from './components/ResultatsOfficielsView';
 import { CartView } from './components/CartView';
 import { SubjectDetailModal } from './components/SubjectDetailModal';
 import { AuthModal } from './components/AuthModal';
@@ -55,13 +57,13 @@ class AppErrorBoundary extends React.Component<
 }
 
 const MainAppContent: React.FC = () => {
-  const { user, directeurUser, activeRole, authReady } = useAuth();
+  const { user, directeurUser, directeurCedocUser, activeRole, authReady } = useAuth();
 
   // Navigation pour visiteur : 'home' ou 'cart'
   const [visitorView, setVisitorView] = useState<'home' | 'cart'>('home');
 
-  // Navigation par onglets supérieurs : 'recherche' (recherche de sujets) ou 'calendrier' (calendrier officiel)
-  const [activeSection, setActiveSection] = useState<'recherche' | 'calendrier'>('recherche');
+  // Navigation par sections visiteurs : 'recherche' | 'calendrier' | 'resultats'
+  const [activeSection, setActiveSection] = useState<'recherche' | 'calendrier' | 'resultats'>('recherche');
 
   // Modale d'authentification
   const [authModal, setAuthModal] = useState<{ isOpen: boolean; mode: 'login' | 'register' }>({
@@ -105,15 +107,20 @@ const MainAppContent: React.FC = () => {
     );
   }
 
-  // 1. ESPACE DU DIRECTEUR DE THÈSE (Exclusif, 3 onglets, zéro footer)
+  // 1. ESPACE DU DIRECTEUR DU CEDOC (Exclusif, 3 onglets, zéro footer)
+  if (activeRole === 'directeur_cedoc' || directeurCedocUser) {
+    return <DirecteurCedocDashboard />;
+  }
+
+  // 2. ESPACE DU DIRECTEUR DE THÈSE (Exclusif, 3 onglets, zéro footer)
   if (activeRole === 'directeur' || directeurUser) {
     return <DirecteurDashboard />;
   }
 
-  // 2. ESPACE DU CANDIDAT OU PORTAIL VISITEUR
+  // 3. ESPACE DU CANDIDAT OU PORTAIL VISITEUR
   return (
     <div className="min-h-screen flex flex-col bg-[#F8FAFC] text-slate-900 font-sans">
-      {/* Header fixe avec les 2 liens officiels : Recherche de sujets & Calendrier */}
+      {/* Header fixe */}
       <Header
         onOpenAuth={handleOpenAuth}
         activeSection={activeSection}
@@ -137,12 +144,12 @@ const MainAppContent: React.FC = () => {
             <div className="flex flex-col">
               {/* Header du body dans la vue visiteur */}
               <div className="bg-white border-b border-slate-200 shadow-2xs">
-                <div className="desktop-container max-w-[820px] mx-auto px-4 flex items-center justify-between h-[52px]">
+                <div className="desktop-container max-w-[880px] mx-auto px-4 flex items-center justify-between h-[52px]">
                   <div className="flex items-center gap-2.5">
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">
                       Portail :
                     </span>
-                    <div className="inline-flex items-center p-1 bg-slate-100 rounded-lg">
+                    <div className="inline-flex items-center p-1 bg-slate-100 rounded-lg gap-0.5">
                       <button
                         type="button"
                         onClick={() => setActiveSection('recherche')}
@@ -168,6 +175,19 @@ const MainAppContent: React.FC = () => {
                         <Calendar className="w-3.5 h-3.5" />
                         <span>Calendrier</span>
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setActiveSection('resultats')}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                          activeSection === 'resultats'
+                            ? 'bg-white text-blue-600 shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Award className="w-3.5 h-3.5" />
+                        <span>Résultats Officiels</span>
+                      </button>
                     </div>
                   </div>
 
@@ -177,7 +197,9 @@ const MainAppContent: React.FC = () => {
                 </div>
               </div>
 
-              {activeSection === 'calendrier' ? (
+              {activeSection === 'resultats' ? (
+                <ResultatsOfficielsView onBackToRecherche={() => setActiveSection('recherche')} />
+              ) : activeSection === 'calendrier' ? (
                 <CalendrierView onBackToRecherche={() => setActiveSection('recherche')} />
               ) : (
                 <HomePage

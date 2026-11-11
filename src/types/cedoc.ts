@@ -47,6 +47,31 @@ export interface DirecteurProfile {
   avatarUrl?: string;
 }
 
+export interface DirecteurCedocProfile {
+  id: string;
+  nom: string;
+  prenom: string;
+  nomComplet: string;
+  email: string;
+  telephone?: string;
+  titre: string;
+  etablissement: string;
+  departement?: string;
+  avatarUrl?: string;
+}
+
+export interface EvaluationJury {
+  noteDossier: number;
+  noteEntretien: number;
+  noteFinale: number;
+  avisJury: 'Très favorable' | 'Favorable' | 'Défavorable';
+  membresJury: string[];
+  dateEntretien: string;
+  appreciation: string;
+  signe: boolean;
+  dateSignature: string;
+}
+
 export interface CandidaturePourDirecteur {
   id: string;
   candidatId: string;
@@ -61,12 +86,15 @@ export interface CandidaturePourDirecteur {
   sujetIntitule: string;
   directeurNom: string;
   dateDepot: string;
-  decisionDirecteur: 'En attente' | 'Retenue' | 'Rejetée';
+  decisionDirecteur: 'En attente' | 'Retenue' | 'Rejetée' | 'Admis';
   motifRejet?: string;
   convocationDate?: string;
   convocationHeure?: string;
   convocationLieu?: string;
   convocationInstructions?: string;
+  validationCedoc?: boolean;
+  evaluationJury?: EvaluationJury;
+  statutPublication?: 'Non publiée' | 'Publiée';
   pieces: Record<string, { fileName: string; type: string; downloadUrl?: string; sizeFormatted?: string; dateFormatted?: string; previewUrl?: string }>;
 }
 

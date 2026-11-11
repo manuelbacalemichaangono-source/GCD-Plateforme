@@ -32,8 +32,8 @@ interface CandidateDashboardProps {
   initialTab?: 'home' | 'candidature' | 'notifications' | 'profil';
   onViewSubjectDetails: (sujet: SujetRecord) => void;
   onOpenAuth: (mode: 'login' | 'register') => void;
-  activeSection?: 'recherche' | 'calendrier';
-  onSelectSection?: (sec: 'recherche' | 'calendrier') => void;
+  activeSection?: 'recherche' | 'calendrier' | 'resultats';
+  onSelectSection?: (sec: 'recherche' | 'calendrier' | 'resultats') => void;
 }
 
 export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
@@ -141,13 +141,14 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   );
 
   const isEnvoyee = mySentCandidatures.length > 0 || (!!candidature && candidature.statut !== 'En dépôt');
-  const candRetenue = mySentCandidatures.find((c) => c.decisionDirecteur === 'Retenue') || (candidature?.statut === 'Convoqué' ? candidature : null);
+  const isCandidateAdmis = mySentCandidatures.some((c) => c.decisionDirecteur === 'Admis') || candidature?.statut === 'Admis';
+  const candRetenue = mySentCandidatures.find((c) => c.decisionDirecteur === 'Retenue' || c.decisionDirecteur === 'Admis') || (candidature?.statut === 'Convoqué' || candidature?.statut === 'Admis' ? candidature : null);
   const hasRetenue = !!candRetenue;
   const allRejetees = mySentCandidatures.length > 0 && mySentCandidatures.every((c) => c.decisionDirecteur === 'Rejetée');
 
   const convocationData = useMemo(() => {
     if (!hasRetenue) return null;
-    const fromSent = mySentCandidatures.find((c) => c.decisionDirecteur === 'Retenue');
+    const fromSent = mySentCandidatures.find((c) => c.decisionDirecteur === 'Retenue' || c.decisionDirecteur === 'Admis');
     return {
       date: fromSent?.convocationDate || candidature?.convocationDate || '24 novembre 2026',
       heure: fromSent?.convocationHeure || candidature?.convocationHeure || '10:00',
@@ -158,22 +159,18 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     };
   }, [hasRetenue, mySentCandidatures, candidature]);
 
-  /*
-    RÈGLES FORMELLES DES COULEURS DE PROGRESSION :
-    - Étape terminée : VERT
-    - Étape à mi-chemin / en cours : ROUGE
-    - Étape future / pas encore le moment : GRIS
-  */
   const step1State: 'vert' | 'rouge' | 'gris' = isEnvoyee ? 'vert' : 'rouge';
   const step2State: 'vert' | 'rouge' | 'gris' = !isEnvoyee ? 'gris' : hasRetenue || allRejetees ? 'vert' : 'rouge';
   const step3State: 'vert' | 'rouge' | 'gris' = !isEnvoyee ? 'gris' : hasRetenue ? 'vert' : allRejetees ? 'rouge' : 'rouge';
   const step4State: 'vert' | 'rouge' | 'gris' = !isEnvoyee ? 'gris' : hasRetenue ? 'vert' : 'gris';
+  const step5State: 'vert' | 'rouge' | 'gris' = isCandidateAdmis ? 'vert' : 'gris';
 
   const stepsList = [
-    { id: 'step_depot', title: '1. Dépôt de candidature', state: step1State },
-    { id: 'step_precontrole', title: '2. Pré-contrôle administratif', state: step2State },
-    { id: 'step_evaluation', title: '3. Décision du directeur', state: step3State },
-    { id: 'step_convocation', title: '4. Convocation à l’entretien', state: step4State },
+    { id: 'step_depot', title: '1. Dépôt', state: step1State },
+    { id: 'step_precontrole', title: '2. Pré-contrôle', state: step2State },
+    { id: 'step_evaluation', title: '3. Avis directeur', state: step3State },
+    { id: 'step_convocation', title: '4. Entretien', state: step4State },
+    { id: 'step_admission', title: '5. Admission', state: step5State },
   ];
 
   const toggleExpand = (sujetId: string) => {
@@ -288,14 +285,17 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   {mySentCandidatures.map((cand) => {
                     const fullSujet = sujetsList.find((s) => s.id === cand.sujetId);
                     const isExpanded = expandedSujetIds[cand.sujetId] ?? true;
-                    const isRetenue = cand.decisionDirecteur === 'Retenue';
+                    const isCandAdmis = cand.decisionDirecteur === 'Admis' || candidature?.statut === 'Admis';
+                    const isRetenue = !isCandAdmis && cand.decisionDirecteur === 'Retenue';
                     const isRejetee = cand.decisionDirecteur === 'Rejetée';
 
                     return (
                       <div
                         key={cand.id}
                         className={`border rounded-xl p-4 flex flex-col gap-3 transition-colors ${
-                          isRetenue
+                          isCandAdmis
+                            ? 'bg-emerald-50/30 border-emerald-400'
+                            : isRetenue
                             ? 'bg-emerald-50/25 border-emerald-300'
                             : isRejetee
                             ? 'bg-red-50/20 border-red-200'
@@ -315,20 +315,34 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
                           <span
                             className={`text-[10px] font-bold px-2.5 py-1 rounded-full border shrink-0 ${
-                              isRetenue
+                              isCandAdmis
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                                : isRetenue
                                 ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                                 : isRejetee
                                 ? 'bg-red-100 text-red-800 border-red-300'
                                 : 'bg-blue-50 text-blue-700 border-blue-200'
                             }`}
                           >
-                            {isRetenue
-                              ? 'Retenue (Admis pour entretien)'
+                            {isCandAdmis
+                              ? 'Admis (Liste officielle publiée)'
+                              : isRetenue
+                              ? 'Convoqué à l’entretien'
                               : isRejetee
                               ? 'Candidature non retenue'
                               : 'En cours d’instruction'}
                           </span>
                         </div>
+
+                        {/* Message officiel si admis */}
+                        {isCandAdmis && (
+                          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900 flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span className="font-semibold">
+                              Félicitations ! Votre admission au cycle doctoral a été validée par la Direction du CEDoc et publiée sur la liste officielle.
+                            </span>
+                          </div>
+                        )}
 
                         {/* Ligne 2 : Directeur et date d'envoi */}
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600 border-y border-slate-100 py-2">
@@ -435,8 +449,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
               {/* Stepper horizontal épuré */}
               <div className="py-4 px-2">
-                <div className="grid grid-cols-4 gap-4 relative">
-                  <div className="absolute top-5 left-10 right-10 h-0.5 bg-slate-200 -z-0" />
+                <div className="grid grid-cols-5 gap-2 relative">
+                  <div className="absolute top-5 left-6 right-6 h-0.5 bg-slate-200 -z-0" />
 
                   {stepsList.map((st, index) => {
                     const isVert = st.state === 'vert';
@@ -553,22 +567,17 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
         <div className="py-6">
           <div className="desktop-container max-w-[820px] mx-auto px-4 flex flex-col gap-5">
             <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col gap-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div className="flex items-center justify-between gap-3 pb-4 border-b border-slate-100">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
                     <Bell className="w-5 h-5" />
                   </div>
-                  <div>
-                    <h1 className="font-display font-bold text-base text-slate-900 leading-tight">
-                      Journal des notifications
-                    </h1>
-                    <span className="text-xs text-slate-500">
-                      Suivi en temps réel des convocations, décisions de directeurs et avis officiels
-                    </span>
-                  </div>
+                  <h1 className="font-display font-bold text-base text-slate-900 leading-tight">
+                    Journal des notifications
+                  </h1>
                 </div>
 
-                <div className="flex items-center gap-2 self-start sm:self-auto">
+                <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                     {candidateNotifications.length} notification{candidateNotifications.length > 1 ? 's' : ''}
                   </span>
@@ -586,54 +595,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Filtres de notifications */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-semibold">
-                <button
-                  type="button"
-                  onClick={() => setNotificationsFilter('all')}
-                  className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap ${
-                    notificationsFilter === 'all'
-                      ? 'bg-blue-600 text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Toutes ({candidateNotifications.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNotificationsFilter('success')}
-                  className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap ${
-                    notificationsFilter === 'success'
-                      ? 'bg-emerald-600 text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Convocations & Retenues
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNotificationsFilter('danger')}
-                  className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap ${
-                    notificationsFilter === 'danger'
-                      ? 'bg-red-600 text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Décisions & Rejets
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNotificationsFilter('info')}
-                  className={`px-3 py-1.5 rounded-lg transition-all whitespace-nowrap ${
-                    notificationsFilter === 'info'
-                      ? 'bg-blue-600 text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Informations
-                </button>
-              </div>
-
               {/* Liste des notifications */}
               {candidateNotifications.length === 0 ? (
                 <div className="py-12 text-center flex flex-col items-center justify-center gap-2">
@@ -643,18 +604,10 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   <h3 className="font-semibold text-slate-800 text-sm">
                     Aucune notification pour le moment
                   </h3>
-                  <p className="text-xs text-slate-500 max-w-sm">
-                    Les convocations aux entretiens et les décisions des directeurs de thèse apparaîtront ici dès leur émission.
-                  </p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-2.5">
-                  {candidateNotifications
-                    .filter((n) => {
-                      if (notificationsFilter === 'all') return true;
-                      return n.type === notificationsFilter;
-                    })
-                    .map((notif) => {
+                  {candidateNotifications.map((notif) => {
                       const isSuccess = notif.type === 'success';
                       const isDanger = notif.type === 'danger';
 

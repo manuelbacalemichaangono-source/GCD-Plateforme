@@ -370,63 +370,30 @@ export const DirecteurDashboard: React.FC = () => {
                           </p>
                         </div>
 
-                        {/* STRICTEMENT DEUX CONTRÔLES UNIQUEMENT :
-                            1. Interruptor / Switch pour activer ou désactiver en temps réel
-                            2. Bouton pour écarter le sujet de sa liste
-                        */}
+                        {/* Contrôle unique : Interrupteur / Switch toggle pour activer ou suspendre les candidatures */}
                         <div className="flex items-center gap-3 shrink-0 md:self-start pt-1">
-                          {!isEcarte ? (
-                            <>
-                              {/* CONTRÔLE 1 : L'INTERRUPTEUR (Switch toggle interactif) */}
-                              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-1.5 px-3">
-                                <span className="text-xs font-semibold text-slate-700">
-                                  {isActif ? 'Candidatures ouvertes' : 'Candidatures suspendues'}
-                                </span>
+                          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg p-1.5 px-3">
+                            <span className="text-xs font-semibold text-slate-700">
+                              {isActif ? 'Candidatures ouvertes' : 'Candidatures suspendues'}
+                            </span>
 
-                                <button
-                                  type="button"
-                                  role="switch"
-                                  aria-checked={isActif}
-                                  onClick={() => toggleSujetActif(sujet.id)}
-                                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                    isActif ? 'bg-blue-600' : 'bg-slate-300'
-                                  }`}
-                                  title={isActif ? 'Désactiver la réception des candidatures' : 'Activer la réception des candidatures'}
-                                >
-                                  <span
-                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                                      isActif ? 'translate-x-5' : 'translate-x-0'
-                                    }`}
-                                  />
-                                </button>
-                              </div>
-
-                              {/* CONTRÔLE 2 : BOUTON ÉCARTER LE SUJET */}
-                              <button
-                                type="button"
-                                onClick={() => ecarterSujet(sujet.id)}
-                                className="inline-flex items-center gap-1.5 text-xs font-semibold h-[38px] px-3.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-colors shadow-2xs"
-                                title="Retirer ce sujet de ma liste pour ce cycle doctoral"
-                              >
-                                <Ban className="w-3.5 h-3.5" />
-                                <span>Écarter ce sujet</span>
-                              </button>
-                            </>
-                          ) : (
-                            <div className="flex items-center gap-2 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg">
-                              <span className="text-xs text-slate-500 italic">
-                                Sujet écarté pour ce cycle
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => retablirSujet(sujet.id)}
-                                className="text-xs text-blue-600 hover:text-blue-800 font-semibold underline ml-1 cursor-pointer"
-                                title="Rétablir ce sujet dans ma liste"
-                              >
-                                Rétablir
-                              </button>
-                            </div>
-                          )}
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={isActif}
+                              onClick={() => toggleSujetActif(sujet.id)}
+                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                isActif ? 'bg-blue-600' : 'bg-slate-300'
+                              }`}
+                              title={isActif ? 'Désactiver la réception des candidatures' : 'Activer la réception des candidatures'}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                                  isActif ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -484,7 +451,7 @@ export const DirecteurDashboard: React.FC = () => {
 
                             {isRetenue ? (
                               <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">
-                                Retenue (Admis pour entretien)
+                                Convoqué à l’entretien
                               </span>
                             ) : isRejetee ? (
                               <span className="text-[10px] font-semibold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200">
@@ -502,19 +469,8 @@ export const DirecteurDashboard: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Boutons d'action */}
+                        {/* Bouton d'action unique : Ouvrir la fiche */}
                         <div className="flex items-center gap-2 shrink-0">
-                          {cand.decisionDirecteur !== 'Retenue' && cand.decisionDirecteur !== 'Rejetée' && (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenConvocationModal(cand)}
-                              className="inline-flex items-center gap-1.5 px-3.5 h-[36px] rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors shadow-2xs"
-                              title="Retenir ce candidat et programmer l'entretien"
-                            >
-                              <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                              <span>Retenir</span>
-                            </button>
-                          )}
                           <button
                             type="button"
                             onClick={() => setSelectedCandidatId(cand.id)}
@@ -848,11 +804,11 @@ export const DirecteurDashboard: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => handleOpenConvocationModal(selectedCandidature)}
-                    className="inline-flex items-center gap-1.5 px-5 h-[38px] rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors shadow-xs"
-                    title="Valider et retenir le candidat pour l’entretien scientifique"
+                    className="inline-flex items-center gap-1.5 px-4 h-[38px] rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors shadow-xs"
+                    title="Valider et convoquer le candidat pour l’entretien scientifique"
                   >
-                    <Check className="w-4 h-4 stroke-[2.5]" />
-                    <span>Retenir</span>
+                    <Calendar className="w-4 h-4" />
+                    <span>Convoquer à l’entretien</span>
                   </button>
                 </>
               ) : (

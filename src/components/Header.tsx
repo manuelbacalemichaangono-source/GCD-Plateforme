@@ -4,8 +4,8 @@ import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
   onOpenAuth: (mode: 'login' | 'register') => void;
-  activeSection?: 'recherche' | 'calendrier';
-  onSelectSection?: (section: 'recherche' | 'calendrier') => void;
+  activeSection?: 'recherche' | 'calendrier' | 'resultats';
+  onSelectSection?: (section: 'recherche' | 'calendrier' | 'resultats') => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
