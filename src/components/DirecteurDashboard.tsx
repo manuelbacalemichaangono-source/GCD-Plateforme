@@ -1094,7 +1094,7 @@ export const DirecteurDashboard: React.FC = () => {
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Ex : Prévoir une présentation orale de 15 minutes sur vos travaux antérieurs et la méthodologie."
+                  placeholder="Consignes éventuelles pour l’audition."
                   value={convocationModal.instructions}
                   onChange={(e) =>
                     setConvocationModal((prev) => ({

@@ -48,6 +48,15 @@ export interface CandidateNotificationItem {
   date: string;
   type: 'info' | 'success' | 'danger';
   read?: boolean;
+  isConvocation?: boolean;
+  convocationData?: {
+    date: string;
+    heure: string;
+    lieu: string;
+    instructions?: string;
+    sujetIntitule?: string;
+    directeurNom?: string;
+  };
 }
 
 export interface AdmisOfficielItem {
@@ -197,8 +206,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     'aladinmonroe0@gmail.com': [
       {
         id: 'notif_welcome_aladin',
-        title: 'Bienvenue sur la plateforme CEDoc (EST Fès)',
-        detail: 'Campagne de candidature au cycle doctoral ouverte pour l’année universitaire 2026/2027.',
+        title: 'Bienvenue au CEDoc',
+        detail: 'Campagne doctorale 2026/2027 ouverte.',
         date: 'Aujourd’hui',
         type: 'info',
         read: false,
@@ -214,8 +223,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return [
         {
           id: 'notif_welcome_' + currentUserEmail.replace(/[^a-zA-Z0-9]/g, '_'),
-          title: 'Bienvenue sur la plateforme CEDoc (EST Fès)',
-          detail: 'Campagne de candidature au cycle doctoral ouverte pour l’année universitaire 2026/2027.',
+          title: 'Bienvenue au CEDoc',
+          detail: 'Campagne doctorale 2026/2027 ouverte.',
           date: 'Aujourd’hui',
           type: 'info' as const,
           read: false,
@@ -822,11 +831,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const candEmail = targetCand.candidatEmail.trim().toLowerCase();
       const notifConvoc: CandidateNotificationItem = {
         id: 'notif_convoc_' + Date.now(),
-        title: 'Convocation à l’entretien scientifique',
-        detail: `Votre dossier a été validé et retenu par Pr. ${targetCand.directeurNom} pour le sujet « ${targetCand.sujetIntitule} ». Entretien fixé le ${convocation?.date || ''} à ${convocation?.heure || ''} au lieu : ${convocation?.lieu || ''}.`,
+        title: "Convocation officielle à l'entretien",
+        detail: 'Cliquez pour afficher les informations et télécharger la convocation.',
         date: 'Aujourd’hui',
         type: 'info',
         read: false,
+        isConvocation: true,
+        convocationData: {
+          date: convocation?.date || '24 novembre 2026',
+          heure: convocation?.heure || '10:00',
+          lieu: convocation?.lieu || 'Salle des actes, EST Fès',
+          instructions: convocation?.instructions,
+          sujetIntitule: targetCand.sujetIntitule,
+          directeurNom: targetCand.directeurNom,
+        },
       };
 
       setNotificationsByUser((prev) => ({
@@ -927,8 +945,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const candEmail = cand.candidatEmail.trim().toLowerCase();
       const notifAdmis: CandidateNotificationItem = {
         id: 'notif_admis_' + cand.id + '_' + Date.now(),
-        title: 'Admission officielle au cycle doctoral (2026/2027)',
-        detail: `Félicitations ! Votre proposition d’admission a été validée par la Direction du CEDoc. Votre nom est désormais inscrit sur la liste officielle des admis affichée publiquement.`,
+        title: 'Admission définitive',
+        detail: 'Candidature admise sur la liste officielle.',
         date: todayFormatted,
         type: 'success',
         read: false,
@@ -1060,8 +1078,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 6. Enregistrer immédiatement dans le Journal des notifications propre à ce candidat
     const notifAnnule: CandidateNotificationItem = {
       id: 'notif_annulee_' + Date.now(),
-      title: 'Candidature annulée et supprimée',
-      detail: `Votre candidature pour le sujet « ${targetIntitule} » a été supprimée avec succès. Le sujet a été libéré dans le catalogue officiel.`,
+      title: 'Candidature annulée',
+      detail: 'Votre candidature a été retirée.',
       date: 'À l’instant',
       type: 'info',
       read: false,
@@ -1210,8 +1228,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const notifSent: CandidateNotificationItem = {
       id: 'notif_sent_' + Date.now(),
-      title: `Candidature transmise (${chosenSujets.length} sujet${chosenSujets.length > 1 ? 's' : ''})`,
-      detail: `Votre dossier a été transmis pour : ${chosenSujets.map((s) => `« ${s.intitule} » (${s.directeur})`).join(' et ')}.`,
+      title: 'Candidature transmise',
+      detail: 'Dossier envoyé au directeur de thèse.',
       date: todayFormatted,
       type: 'info',
       read: false,

@@ -193,7 +193,7 @@ export const DirecteurCedocDashboard: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F8FAFC] text-slate-900 font-sans pb-16">
+    <div className="min-h-screen flex flex-col bg-[#F8FAFC] text-slate-900 font-sans pb-20">
       {/* Header épuré sans navigation */}
       <header className="desktop-header">
         <div className="desktop-container flex items-center justify-between h-[64px] max-w-[1240px]">
@@ -201,14 +201,9 @@ export const DirecteurCedocDashboard: React.FC = () => {
             <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-xs">
               G
             </div>
-            <div className="flex flex-col">
-              <span className="font-display font-bold text-slate-900 text-sm sm:text-base leading-tight">
-                Direction du CEDoc · EST Fès
-              </span>
-              <span className="text-[10px] text-slate-500 font-medium">
-                Centre d’Études Doctorales
-              </span>
-            </div>
+            <span className="font-display font-bold text-slate-900 text-sm sm:text-base leading-tight">
+              Directeur du CEDoc
+            </span>
           </div>
 
           <div className="flex items-center gap-3">
@@ -227,50 +222,6 @@ export const DirecteurCedocDashboard: React.FC = () => {
         </div>
       </header>
 
-      {/* Barre de navigation 3 onglets (Tableau de bord, Gestion Global, Profil) */}
-      <div className="bg-white border-b border-slate-200 shadow-2xs">
-        <div className="desktop-container max-w-[1240px] flex items-center gap-2 h-[48px]">
-          <button
-            type="button"
-            onClick={() => setActiveTab('tableau')}
-            className={`inline-flex items-center gap-2 h-full px-4 text-xs font-semibold border-b-2 transition-all ${
-              activeTab === 'tableau'
-                ? 'border-blue-600 text-blue-600 bg-blue-50/20'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <LayoutDashboard className="w-4 h-4" />
-            <span>Tableau de bord</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('gestion')}
-            className={`inline-flex items-center gap-2 h-full px-4 text-xs font-semibold border-b-2 transition-all ${
-              activeTab === 'gestion'
-                ? 'border-blue-600 text-blue-600 bg-blue-50/20'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <FolderKanban className="w-4 h-4" />
-            <span>Gestion Global</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('profil')}
-            className={`inline-flex items-center gap-2 h-full px-4 text-xs font-semibold border-b-2 transition-all ${
-              activeTab === 'profil'
-                ? 'border-blue-600 text-blue-600 bg-blue-50/20'
-                : 'border-transparent text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <UserIcon className="w-4 h-4" />
-            <span>Profil</span>
-          </button>
-        </div>
-      </div>
-
       {/* CONTENU PRINCIPAL SANS FOOTER */}
       <main className="flex-1 py-6">
         <div className="desktop-container max-w-[1240px] flex flex-col gap-6">
@@ -283,54 +234,38 @@ export const DirecteurCedocDashboard: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col gap-2">
                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    Total des postulaciones
+                    Total des candidatures
                   </span>
-                  <div className="flex items-baseline justify-between">
-                    <span className="font-display font-bold text-2xl text-slate-900">
-                      {totalCandidatures}
-                    </span>
-                    <span className="text-xs text-slate-400 font-medium">dossiers déposés</span>
-                  </div>
+                  <span className="font-display font-bold text-2xl text-slate-900">
+                    {totalCandidatures}
+                  </span>
                 </div>
 
                 <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col gap-2">
                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                     Candidats convoqués à entretien
                   </span>
-                  <div className="flex items-baseline justify-between">
-                    <span className="font-display font-bold text-2xl text-blue-600">
-                      {totalConvoques}
-                    </span>
-                    <span className="text-xs text-slate-400 font-medium">auditions programmées</span>
-                  </div>
+                  <span className="font-display font-bold text-2xl text-blue-600">
+                    {totalConvoques}
+                  </span>
                 </div>
 
                 <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col gap-2">
                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                     Candidats admis définitivement
                   </span>
-                  <div className="flex items-baseline justify-between">
-                    <span className="font-display font-bold text-2xl text-emerald-600">
-                      {totalAdmis}
-                    </span>
-                    <span className="text-xs text-slate-400 font-medium">
-                      {isListeOfficiellePubliee ? 'homologués' : 'en délibération'}
-                    </span>
-                  </div>
+                  <span className="font-display font-bold text-2xl text-emerald-600">
+                    {totalAdmis}
+                  </span>
                 </div>
               </div>
 
               {/* SECTION DE VALIDATION FINALE */}
               <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col gap-5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                  <div>
-                    <h2 className="font-display font-bold text-base text-slate-900">
-                      Validation Finale · Candidats évalués par les jurys
-                    </h2>
-                    <span className="text-xs text-slate-500">
-                      Examen des dossiers complets et des procès-verbaux d’évaluation avant publication officielle
-                    </span>
-                  </div>
+                  <h2 className="font-display font-bold text-base text-slate-900">
+                    Validation Finale · Candidats évalués par les jurys
+                  </h2>
 
                   {/* Bouton d'action institutionnelle : Publier la liste officielle */}
                   <button
@@ -464,14 +399,9 @@ export const DirecteurCedocDashboard: React.FC = () => {
               {/* En-tête avec bouton Créer un sujet et filtres */}
               <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col gap-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                  <div>
-                    <h2 className="font-display font-bold text-base text-slate-900">
-                      Supervision globale des sujets de thèse
-                    </h2>
-                    <span className="text-xs text-slate-500">
-                      Contrôle centralisé du catalogue de recherche et activation en temps réel
-                    </span>
-                  </div>
+                  <h2 className="font-display font-bold text-base text-slate-900">
+                    Sujets ({sujetsFiltres.length})
+                  </h2>
 
                   <button
                     type="button"
@@ -479,7 +409,7 @@ export const DirecteurCedocDashboard: React.FC = () => {
                     className="btn-primary text-xs h-[36px] px-3.5 flex items-center gap-1.5 self-start sm:self-auto"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Nouveau sujet de thèse</span>
+                    <span>Nouveau sujet</span>
                   </button>
                 </div>
 
@@ -1147,6 +1077,44 @@ export const DirecteurCedocDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* PESTANAS DE NAVEGACIÓN EN LA PARTE INFERIOR */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 shadow-md h-[54px] flex items-center justify-center">
+        <div className="desktop-container flex items-center justify-around max-w-md w-full">
+          <button
+            type="button"
+            onClick={() => setActiveTab('tableau')}
+            className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${
+              activeTab === 'tableau' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <LayoutDashboard className="w-5 h-5" />
+            <span>Tableau de bord</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('gestion')}
+            className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${
+              activeTab === 'gestion' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <FolderKanban className="w-5 h-5" />
+            <span>Gestion Global</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('profil')}
+            className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${
+              activeTab === 'profil' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <UserIcon className="w-5 h-5" />
+            <span>Profil</span>
+          </button>
+        </div>
+      </nav>
     </div>
   );
 };

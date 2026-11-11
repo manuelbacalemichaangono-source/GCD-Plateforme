@@ -26,7 +26,7 @@ export const CalendrierView: React.FC<CalendrierViewProps> = ({ onBackToRecherch
       dateRange: '11 janvier – 22 janvier 2027',
       title: 'Auditions devant les jurys thématiques du CEDoc',
       description:
-        'Présentation orale de 15 minutes des travaux de fin d’études suivie d’un échange méthodologique autour du sujet doctoral.',
+        'Audition scientifique des candidats avec les membres du jury autour du sujet doctoral.',
     },
     {
       phaseNumber: 'Phase 04',

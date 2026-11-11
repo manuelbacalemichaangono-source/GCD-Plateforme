@@ -146,9 +146,6 @@ const MainAppContent: React.FC = () => {
               <div className="bg-white border-b border-slate-200 shadow-2xs">
                 <div className="desktop-container max-w-[880px] mx-auto px-4 flex items-center justify-between h-[52px]">
                   <div className="flex items-center gap-2.5">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">
-                      Portail :
-                    </span>
                     <div className="inline-flex items-center p-1 bg-slate-100 rounded-lg gap-0.5">
                       <button
                         type="button"

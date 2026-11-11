@@ -20,6 +20,7 @@ import {
   Info,
   X,
   CheckCheck,
+  Download,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
@@ -74,7 +75,92 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   });
 
   const [cancelFeedback, setCancelFeedback] = useState<string | null>(null);
-  const [notificationsFilter, setNotificationsFilter] = useState<'all' | 'success' | 'danger' | 'info'>('all');
+
+  // Modale pour afficher les détails et télécharger le PDF de la convocation
+  const [convocationModal, setConvocationModal] = useState<{
+    isOpen: boolean;
+    data: {
+      date: string;
+      heure: string;
+      lieu: string;
+      instructions?: string;
+      sujetIntitule?: string;
+      directeurNom?: string;
+    } | null;
+  }>({
+    isOpen: false,
+    data: null,
+  });
+
+  const handleDownloadConvocationPDF = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const data = convocationModal.data;
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Convocation officielle à l’entretien - CEDoc EST Fès</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 48px; color: #0f172a; line-height: 1.5; }
+    .header { text-align: center; border-bottom: 2px solid #2563eb; padding-bottom: 20px; margin-bottom: 30px; }
+    .sub { font-size: 13px; text-transform: uppercase; font-weight: 700; color: #475569; letter-spacing: 0.5px; }
+    .center-name { font-size: 16px; font-weight: 800; color: #1e40af; margin-top: 6px; }
+    .doc-title { font-size: 20px; font-weight: 800; text-transform: uppercase; margin-top: 20px; color: #0f172a; letter-spacing: 0.5px; }
+    .card { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 18px 20px; margin-bottom: 18px; }
+    .card-title { font-size: 12px; font-weight: 800; text-transform: uppercase; color: #475569; margin-bottom: 12px; letter-spacing: 0.5px; }
+    .row { display: flex; margin-bottom: 8px; font-size: 14px; }
+    .label { width: 180px; font-weight: 700; color: #334155; }
+    .val { flex: 1; color: #0f172a; }
+    .footer { margin-top: 48px; display: flex; justify-content: space-between; align-items: flex-end; }
+    .stamp { border: 1.5px dashed #94a3b8; border-radius: 6px; padding: 16px 20px; text-align: center; font-size: 12px; color: #475569; }
+    @media print { body { padding: 16px; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="sub">Royaume du Maroc · Université Sidi Mohamed Ben Abdellah</div>
+    <div class="center-name">Centre d’Études Doctorales (CEDoc) - École Supérieure de Technologie de Fès</div>
+    <div class="doc-title">Convocation officielle à l’entretien</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Candidat</div>
+    <div class="row"><div class="label">Nom et Prénom :</div><div class="val"><strong>${profile.prenom} ${profile.nom}</strong></div></div>
+    <div class="row"><div class="label">CNE / Massar :</div><div class="val">${profile.cne}</div></div>
+    <div class="row"><div class="label">Email :</div><div class="val">${profile.email}</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Informations de l’entretien</div>
+    <div class="row"><div class="label">Sujet de thèse :</div><div class="val"><strong>${data?.sujetIntitule || 'Sujet doctoral'}</strong></div></div>
+    <div class="row"><div class="label">Directeur de thèse :</div><div class="val">${data?.directeurNom || 'Directeur de thèse'}</div></div>
+    <div class="row"><div class="label">Date de l’entretien :</div><div class="val"><strong>${data?.date || ''}</strong></div></div>
+    <div class="row"><div class="label">Heure exacte :</div><div class="val"><strong>${data?.heure || ''}</strong></div></div>
+    <div class="row"><div class="label">Lieu / Salle :</div><div class="val"><strong>${data?.lieu || 'Salle des actes, EST Fès'}</strong></div></div>
+    ${data?.instructions ? `<div class="row"><div class="label">Consignes :</div><div class="val">${data.instructions}</div></div>` : ''}
+  </div>
+
+  <div class="footer">
+    <div style="font-size: 12px; color: #64748b;">
+      Document officiel délivré par le CEDoc EST Fès.<br>
+      À présenter le jour de l’audition.
+    </div>
+    <div class="stamp">
+      <strong>Cachet et Visa</strong><br>
+      Direction du CEDoc<br>
+      EST Fès
+    </div>
+  </div>
+</body>
+</html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
 
   const unreadNotificationsCount = useMemo(() => {
     return candidateNotifications.filter((n) => !n.read).length;
@@ -388,34 +474,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                           </div>
                         )}
 
-                        {/* Détails de la convocation si retenue */}
-                        {isRetenue && (cand.convocationDate || cand.convocationHeure || cand.convocationLieu) && (
-                          <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-lg flex flex-col gap-2 text-xs">
-                            <span className="font-bold text-emerald-900 flex items-center gap-1.5">
-                              <Calendar className="w-3.5 h-3.5 text-emerald-700" />
-                              <span>Convocation officielle à l’entretien fixée par le directeur :</span>
-                            </span>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-white/90 p-2 rounded border border-emerald-200 text-slate-800">
-                              <div>
-                                <span className="text-[10px] text-slate-400 block font-bold uppercase">Date</span>
-                                <span className="font-bold">{cand.convocationDate}</span>
-                              </div>
-                              <div>
-                                <span className="text-[10px] text-slate-400 block font-bold uppercase">Heure</span>
-                                <span className="font-bold">{cand.convocationHeure}</span>
-                              </div>
-                              <div>
-                                <span className="text-[10px] text-slate-400 block font-bold uppercase">Lieu ou lien</span>
-                                <span className="font-bold truncate block" title={cand.convocationLieu}>{cand.convocationLieu}</span>
-                              </div>
-                            </div>
-                            {cand.convocationInstructions && (
-                              <div className="text-[11px] text-slate-700 bg-white/70 p-2 rounded border border-emerald-200">
-                                <strong>Consignes : </strong>{cand.convocationInstructions}
-                              </div>
-                            )}
-                          </div>
-                        )}
 
                         {/* Bouton d'annulation de la candidature */}
                         <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
@@ -486,76 +544,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 </div>
               </div>
 
-              {/* DÉTAILS DE LA CONVOCATION À L'ENTRETIEN */}
-              {hasRetenue && convocationData && (
-                <div className="p-5 rounded-xl border border-emerald-300 bg-emerald-50/40 flex flex-col gap-3.5">
-                  <div className="flex items-center justify-between pb-2 border-b border-emerald-200/60">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                        <Calendar className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-sm text-emerald-950">
-                          Convocation officielle à l’entretien scientifique
-                        </h3>
-                        <span className="text-[11px] text-emerald-800">
-                          Votre dossier a été validé et retenu par Pr. {convocationData.directeurNom}.
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-3 py-1 rounded-full">
-                      Candidat retenu
-                    </span>
-                  </div>
 
-                  <div className="text-xs text-slate-800 bg-white/80 p-2.5 rounded-lg border border-emerald-200">
-                    <span className="font-medium text-slate-500">Sujet de thèse : </span>
-                    <span className="font-bold text-slate-900">{convocationData.sujetIntitule}</span>
-                  </div>
-
-                  {/* Les 3 données clés obligatoires : date fixée, heure exacte, lieu ou lien */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                    <div className="bg-white p-3 rounded-lg border border-emerald-200 flex flex-col gap-1 shadow-2xs">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-emerald-600" /> Date fixée
-                      </span>
-                      <span className="font-bold text-slate-900 text-sm">
-                        {convocationData.date || 'À déterminer'}
-                      </span>
-                    </div>
-
-                    <div className="bg-white p-3 rounded-lg border border-emerald-200 flex flex-col gap-1 shadow-2xs">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-emerald-600" /> Heure exacte
-                      </span>
-                      <span className="font-bold text-slate-900 text-sm">
-                        {convocationData.heure || '10:00'}
-                      </span>
-                    </div>
-
-                    <div className="bg-white p-3 rounded-lg border border-emerald-200 flex flex-col gap-1 shadow-2xs">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-emerald-600" /> Lieu ou lien
-                      </span>
-                      <span className="font-bold text-slate-900 text-sm truncate" title={convocationData.lieu}>
-                        {convocationData.lieu || 'Salle des actes, EST Fès'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Consignes ou instructions additionnelles */}
-                  {convocationData.instructions && (
-                    <div className="bg-white p-3 rounded-lg border border-emerald-200 text-xs text-slate-700 flex flex-col gap-1">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                        Consignes ou instructions additionnelles du jury :
-                      </span>
-                      <p className="text-slate-800 leading-relaxed font-medium">
-                        {convocationData.instructions}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
           </div>
@@ -610,11 +599,28 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                   {candidateNotifications.map((notif) => {
                       const isSuccess = notif.type === 'success';
                       const isDanger = notif.type === 'danger';
+                      const isConvocation =
+                        notif.isConvocation || notif.title.toLowerCase().includes('convocation');
+
+                      const handleClick = () => {
+                        markNotificationRead(notif.id);
+                        if (isConvocation) {
+                          const data = notif.convocationData || convocationData || {
+                            date: candidature?.convocationDate || '24 novembre 2026',
+                            heure: candidature?.convocationHeure || '10:00',
+                            lieu: candidature?.convocationLieu || 'Salle des actes, EST Fès',
+                            instructions: candidature?.convocationInstructions,
+                            sujetIntitule: candidature?.sujetsChoisis?.[0]?.intitule || 'Sujet de recherche doctoral',
+                            directeurNom: candidature?.sujetsChoisis?.[0]?.directeur || 'Directeur de thèse',
+                          };
+                          setConvocationModal({ isOpen: true, data });
+                        }
+                      };
 
                       return (
                         <div
                           key={notif.id}
-                          onClick={() => markNotificationRead(notif.id)}
+                          onClick={handleClick}
                           className={`p-4 rounded-xl border transition-all cursor-pointer flex items-start justify-between gap-3 ${
                             isSuccess
                               ? 'bg-emerald-50/40 border-emerald-200 hover:border-emerald-300'
@@ -658,6 +664,13 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                                 <p className="text-xs text-slate-600 leading-relaxed">
                                   {notif.detail}
                                 </p>
+                              )}
+
+                              {isConvocation && (
+                                <span className="text-xs font-semibold text-blue-600 hover:text-blue-800 underline underline-offset-2 flex items-center gap-1.5 mt-1">
+                                  <Calendar className="w-3.5 h-3.5" />
+                                  <span>Voir les informations de l’entretien et télécharger la convocation (PDF) →</span>
+                                </span>
                               )}
 
                               <span className="text-[10px] text-slate-400 mt-0.5 font-medium">
@@ -924,6 +937,95 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Oui, annuler et supprimer</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE CONVOCATION OFFICIELLE À L'ENTRETIEN */}
+      {convocationModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 shadow-xl flex flex-col gap-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="font-display font-bold text-sm text-slate-900 leading-tight">
+                    Convocation officielle à l’entretien
+                  </h2>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    Centre d’Études Doctorales (CEDoc) - École Supérieure de Technologie de Fès
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConvocationModal({ isOpen: false, data: null })}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3 text-xs">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Candidat</span>
+                <span className="font-bold text-slate-900">{profile.prenom} {profile.nom} ({profile.cne})</span>
+                <span className="text-slate-500">{profile.email}</span>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sujet de thèse</span>
+                <span className="font-bold text-slate-900">{convocationModal.data?.sujetIntitule || 'Sujet doctoral'}</span>
+                <span className="text-slate-600">Directeur de thèse : {convocationModal.data?.directeurNom || 'Directeur'}</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div className="p-3 bg-blue-50/50 border border-blue-200 rounded-lg flex flex-col gap-0.5">
+                  <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Date</span>
+                  <span className="font-bold text-slate-900 text-xs">{convocationModal.data?.date}</span>
+                </div>
+                <div className="p-3 bg-blue-50/50 border border-blue-200 rounded-lg flex flex-col gap-0.5">
+                  <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Heure</span>
+                  <span className="font-bold text-slate-900 text-xs">{convocationModal.data?.heure}</span>
+                </div>
+                <div className="p-3 bg-blue-50/50 border border-blue-200 rounded-lg flex flex-col gap-0.5">
+                  <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Lieu</span>
+                  <span className="font-bold text-slate-900 text-xs truncate" title={convocationModal.data?.lieu}>{convocationModal.data?.lieu}</span>
+                </div>
+              </div>
+
+              {convocationModal.data?.instructions && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-700">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Consignes</span>
+                  <span>{convocationModal.data.instructions}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[11px] text-slate-400">
+                CEDoc EST Fès
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConvocationModal({ isOpen: false, data: null })}
+                  className="btn-secondary text-xs h-[36px] px-3.5"
+                >
+                  Fermer
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadConvocationPDF}
+                  className="btn-primary text-xs h-[36px] px-4 flex items-center gap-1.5 shadow-xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Télécharger la convocation (PDF)</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
