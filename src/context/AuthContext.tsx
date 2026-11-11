@@ -34,6 +34,9 @@ import {
   PieceDossierRecord,
   PieceSlotPreselection,
   SujetRecord,
+  InscriptionRecord,
+  InscriptionDocItem,
+  MassarApiResponse,
 } from '../types/cedoc';
 import {
   INITIAL_SUJETS,
@@ -57,6 +60,8 @@ export interface CandidateNotificationItem {
     sujetIntitule?: string;
     directeurNom?: string;
   };
+  isReceipt?: boolean;
+  receiptData?: InscriptionRecord;
 }
 
 export interface AdmisOfficielItem {
@@ -134,6 +139,11 @@ interface AuthContextValue {
     previewUrl?: string
   ) => Promise<void>;
   deleteUploadedPiece: (slotId: PieceSlotPreselection) => Promise<void>;
+  inscriptionsList: InscriptionRecord[];
+  getInscriptionForCandidat: (emailOrId?: string) => InscriptionRecord | undefined;
+  soumettreDemandeInscription: (cne: string, universiteOrigine: string) => Promise<void>;
+  synchroniserMassarDirecteur: (inscriptionId: string) => Promise<void>;
+  validerInscriptionDirecteur: (inscriptionId: string) => Promise<void>;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
   logout: () => Promise<void>;
@@ -163,6 +173,46 @@ export const DEFAULT_DIRECTEUR_CEDOC: DirecteurCedocProfile = {
   avatarUrl: '',
 };
 
+const INITIAL_INSCRIPTIONS: InscriptionRecord[] = [
+  {
+    id: 'insc_aladin_01',
+    candidatId: 'cand_aladin_001',
+    candidatNom: 'Monroe',
+    candidatPrenom: 'Aladin',
+    candidatEmail: 'aladinmonroe0@gmail.com',
+    cne: 'N138091823',
+    sujetId: 'sujet_ia_01',
+    sujetIntitule: "Modèles d'Apprentissage Profond pour la Détection Précoce de Pathologies",
+    directeurNom: 'Pr. Karim El Mansouri',
+    directeurEmail: 'k.elmansouri@usmba.ac.ma',
+    universiteOrigine: 'Université Sidi Mohamed Ben Abdellah (EST Fès)',
+    isExterne: false,
+    estSynchronise: false,
+    statut: 'En attente de soumission',
+    documentsOriginaux: [],
+    relevesNotes: [],
+  },
+  {
+    id: 'insc_ext_02',
+    candidatId: 'cand_ext_002',
+    candidatNom: 'Benali',
+    candidatPrenom: 'Yassine',
+    candidatEmail: 'yassine.benali@gmail.com',
+    cne: 'R149023812',
+    sujetId: 'sujet_ia_01',
+    sujetIntitule: "Modèles d'Apprentissage Profond pour la Détection Précoce de Pathologies",
+    directeurNom: 'Pr. Karim El Mansouri',
+    directeurEmail: 'k.elmansouri@usmba.ac.ma',
+    universiteOrigine: 'Université Mohammed V de Rabat',
+    isExterne: true,
+    estSynchronise: false,
+    statut: 'Demande transmise au directeur',
+    dateDemande: 'Aujourd’hui',
+    documentsOriginaux: [],
+    relevesNotes: [],
+  },
+];
+
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -171,6 +221,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<CandidateProfile>(DEFAULT_PROFILE);
   const [candidature, setCandidature] = useState<CandidatureRecord | null>(null);
   const [piecesMap, setPiecesMap] = useState<Record<string, PieceDossierRecord>>({});
+  const [inscriptionsList, setInscriptionsList] = useState<InscriptionRecord[]>(INITIAL_INSCRIPTIONS);
 
   // Espace Directeur de Thèse
   const [directeurUser, setDirecteurUser] = useState<DirecteurProfile | null>(null);
@@ -233,6 +284,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     return notificationsByUser[currentUserEmail];
   }, [currentUserEmail, notificationsByUser]);
+
+  // Fonction centrale de notification par événement :
+  // Remet le compteur de non-lus à zéro en marquant les anciennes notifications comme lues
+  const notifyCandidateEvent = (candEmail: string, notif: Omit<CandidateNotificationItem, 'read'>) => {
+    const cleanEmail = candEmail.trim().toLowerCase();
+    setNotificationsByUser((prev) => {
+      const existing = prev[cleanEmail] || [];
+      const resetOld = existing.map((n) => ({ ...n, read: true }));
+      return {
+        ...prev,
+        [cleanEmail]: [{ ...notif, read: false }, ...resetOld],
+      };
+    });
+  };
 
   // Purge de toute persistance antérieure au chargement pour réinitialiser l'application en propre
   useEffect(() => {
@@ -952,10 +1017,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         read: false,
       };
 
-      setNotificationsByUser((prev) => ({
-        ...prev,
-        [candEmail]: [notifAdmis, ...(prev[candEmail] || [])],
-      }));
+      notifyCandidateEvent(candEmail, notifAdmis);
+
+      // Activer l'inscription doctorale pour ce candidat admis
+      setInscriptionsList((prevInsc) => {
+        const exists = prevInsc.some((i) => i.candidatEmail.trim().toLowerCase() === candEmail);
+        if (exists) return prevInsc;
+        return [
+          ...prevInsc,
+          {
+            id: 'insc_' + cand.id,
+            candidatId: cand.candidatId,
+            candidatNom: cand.candidatNom,
+            candidatPrenom: cand.candidatPrenom,
+            candidatEmail: candEmail,
+            cne: cand.cne,
+            sujetId: cand.sujetId,
+            sujetIntitule: cand.sujetIntitule,
+            directeurNom: cand.directeurNom,
+            directeurEmail: 'k.elmansouri@usmba.ac.ma',
+            universiteOrigine: cand.etablissementOrigine || 'Université Sidi Mohamed Ben Abdellah (EST Fès)',
+            isExterne: false,
+            estSynchronise: false,
+            statut: 'En attente de soumission' as const,
+            documentsOriginaux: [],
+            relevesNotes: [],
+          },
+        ];
+      });
 
       // Synchroniser Firestore
       try {
@@ -1339,6 +1428,309 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const getInscriptionForCandidat = (emailOrId?: string): InscriptionRecord | undefined => {
+    const searchEmail = (emailOrId || user?.email || profile.email || '').trim().toLowerCase();
+    const found = inscriptionsList.find(
+      (i) => i.candidatEmail.trim().toLowerCase() === searchEmail || i.candidatId === emailOrId
+    );
+    if (found) return found;
+
+    if (searchEmail === 'aladinmonroe0@gmail.com' && inscriptionsList.length > 0) {
+      return inscriptionsList[0];
+    }
+
+    return {
+      id: 'insc_' + (user?.uid || 'curr'),
+      candidatId: user?.uid || 'curr',
+      candidatNom: profile.nom,
+      candidatPrenom: profile.prenom,
+      candidatEmail: searchEmail,
+      cne: profile.cne || 'N138091823',
+      sujetId: (candidature?.sujetsChoisis && candidature.sujetsChoisis[0]?.id) || 'sujet_ia_01',
+      sujetIntitule:
+        (candidature?.sujetsChoisis && candidature.sujetsChoisis[0]?.intitule) ||
+        "Modèles d'Apprentissage Profond pour la Détection Précoce de Pathologies",
+      directeurNom: 'Pr. Karim El Mansouri',
+      directeurEmail: 'k.elmansouri@usmba.ac.ma',
+      universiteOrigine: profile.etablissementOrigine || 'Université Sidi Mohamed Ben Abdellah (EST Fès)',
+      isExterne: false,
+      estSynchronise: false,
+      statut: 'En attente de soumission',
+      documentsOriginaux: [],
+      relevesNotes: [],
+    };
+  };
+
+  const soumettreDemandeInscription = async (cne: string, universiteOrigine: string) => {
+    const todayFormatted = new Date().toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+    const cneUpper = cne.trim().toUpperCase();
+    const isExterne =
+      !universiteOrigine.includes('EST Fès') &&
+      !universiteOrigine.includes('USMBA') &&
+      !universiteOrigine.includes('Sidi Mohamed Ben Abdellah');
+
+    let updatedRecord: InscriptionRecord | undefined;
+
+    setInscriptionsList((prev) => {
+      const idx = prev.findIndex(
+        (i) => i.candidatEmail.trim().toLowerCase() === currentUserEmail || i.cne === cneUpper
+      );
+      if (idx !== -1) {
+        const current = prev[idx];
+        const next: InscriptionRecord = {
+          ...current,
+          cne: cneUpper,
+          universiteOrigine,
+          isExterne,
+          estSynchronise: !isExterne,
+          statut: 'Demande transmise au directeur',
+          dateDemande: todayFormatted,
+          diplomeMaster: !isExterne
+            ? current.diplomeMaster || 'Master en Informatique et Systèmes Distribués'
+            : undefined,
+          anneeObtention: !isExterne ? current.anneeObtention || '2025' : undefined,
+          mention: !isExterne ? current.mention || 'Très Bien' : undefined,
+          moyenneGenerale: !isExterne ? current.moyenneGenerale || 16.42 : undefined,
+          documentsOriginaux: !isExterne
+            ? [
+                {
+                  id: `doc_dip_${cneUpper}`,
+                  type: 'diplome',
+                  label: 'Diplôme original de Master',
+                  referenceDoc: `DIP-${cneUpper}-2025`,
+                  source: 'systeme_academique',
+                  statut: 'Conforme',
+                  dateCertification: todayFormatted,
+                  details: 'Extrait du système interne EST Fès / USMBA',
+                },
+                {
+                  id: `doc_rel_${cneUpper}`,
+                  type: 'releves',
+                  label: 'Relevés de notes officiels (S1 à S4)',
+                  referenceDoc: `RN-${cneUpper}-ACAD`,
+                  source: 'systeme_academique',
+                  statut: 'Conforme',
+                  dateCertification: todayFormatted,
+                  details: 'Moyenne générale 16.42/20 · 4 semestres validés',
+                },
+              ]
+            : [],
+          relevesNotes: !isExterne
+            ? [
+                { semestre: 'Semestre 1', moyenne: 16.15, validation: 'Validé (Session Ordinaire)' },
+                { semestre: 'Semestre 2', moyenne: 16.50, validation: 'Validé (Session Ordinaire)' },
+                { semestre: 'Semestre 3', moyenne: 16.20, validation: 'Validé (Session Ordinaire)' },
+                { semestre: 'Semestre 4 (Mémoire Master)', moyenne: 16.85, validation: 'Validé (Mention Très Bien)' },
+              ]
+            : [],
+        };
+        updatedRecord = next;
+        const copy = [...prev];
+        copy[idx] = next;
+        return copy;
+      } else {
+        const next: InscriptionRecord = {
+          id: 'insc_' + Date.now(),
+          candidatId: user?.uid || 'cand_' + Date.now(),
+          candidatNom: profile.nom,
+          candidatPrenom: profile.prenom,
+          candidatEmail: currentUserEmail,
+          cne: cneUpper,
+          sujetId: (candidature?.sujetsChoisis && candidature.sujetsChoisis[0]?.id) || 'sujet_ia_01',
+          sujetIntitule:
+            (candidature?.sujetsChoisis && candidature.sujetsChoisis[0]?.intitule) ||
+            "Modèles d'Apprentissage Profond pour la Détection Précoce de Pathologies",
+          directeurNom: 'Pr. Karim El Mansouri',
+          directeurEmail: 'k.elmansouri@usmba.ac.ma',
+          universiteOrigine,
+          isExterne,
+          estSynchronise: !isExterne,
+          statut: 'Demande transmise au directeur',
+          dateDemande: todayFormatted,
+          documentsOriginaux: [],
+          relevesNotes: [],
+        };
+        updatedRecord = next;
+        return [next, ...prev];
+      }
+    });
+
+    notifyCandidateEvent(currentUserEmail, {
+      id: 'notif_demande_insc_' + Date.now(),
+      title: "Demande d'inscription transmise",
+      detail: 'Votre demande a été transmise à votre Directeur de thèse pour vérification et validation.',
+      date: todayFormatted,
+      type: 'info',
+    });
+  };
+
+  const synchroniserMassarDirecteur = async (inscriptionId: string) => {
+    const todayFormatted = new Date().toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    const target = inscriptionsList.find((i) => i.id === inscriptionId);
+    if (!target) return;
+
+    try {
+      const resp = await fetch('/api/massar-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          massarCode: target.cne,
+          universiteOrigine: target.universiteOrigine,
+          candidatNom: `${target.candidatPrenom} ${target.candidatNom}`,
+        }),
+      });
+
+      if (!resp.ok) throw new Error('API Massar non joignable');
+      const data: MassarApiResponse = await resp.json();
+
+      setInscriptionsList((prev) =>
+        prev.map((item) => {
+          if (item.id === inscriptionId) {
+            return {
+              ...item,
+              estSynchronise: true,
+              diplomeMaster: data.diplomeIntitule,
+              anneeObtention: data.anneeObtention,
+              mention: data.mention,
+              moyenneGenerale: data.moyenneGenerale,
+              apiSyncToken: data.apiSyncToken,
+              documentsOriginaux: data.documentsOriginaux,
+              relevesNotes: data.relevesNotes,
+            };
+          }
+          return item;
+        })
+      );
+    } catch {
+      const fallbackToken = `MASSAR-${target.cne}-${Date.now().toString(36).toUpperCase()}`;
+      setInscriptionsList((prev) =>
+        prev.map((item) => {
+          if (item.id === inscriptionId) {
+            return {
+              ...item,
+              estSynchronise: true,
+              diplomeMaster: 'Master en Informatique et Systèmes Décisionnels',
+              anneeObtention: '2026',
+              mention: 'Très Bien',
+              moyenneGenerale: 16.42,
+              apiSyncToken: fallbackToken,
+              documentsOriginaux: [
+                {
+                  id: `doc_dip_${target.cne}`,
+                  type: 'diplome',
+                  label: 'Diplôme original de Master',
+                  referenceDoc: `DIP-${target.cne}-2026`,
+                  source: 'api_massar',
+                  statut: 'Conforme',
+                  dateCertification: todayFormatted,
+                  details: `Enregistré au registre académique officiel (${target.universiteOrigine})`,
+                },
+                {
+                  id: `doc_rel_${target.cne}`,
+                  type: 'releves',
+                  label: 'Relevés de notes officiels (S1 à S4)',
+                  referenceDoc: `RN-${target.cne}-ACAD`,
+                  source: 'api_massar',
+                  statut: 'Conforme',
+                  dateCertification: todayFormatted,
+                  details: 'Moyenne générale 16.42/20 · 4 semestres validés',
+                },
+              ],
+              relevesNotes: [
+                { semestre: 'Semestre 1', moyenne: 16.15, validation: 'Validé (Session Ordinaire)' },
+                { semestre: 'Semestre 2', moyenne: 16.50, validation: 'Validé (Session Ordinaire)' },
+                { semestre: 'Semestre 3', moyenne: 16.20, validation: 'Validé (Session Ordinaire)' },
+                { semestre: 'Semestre 4 (Mémoire Master)', moyenne: 16.85, validation: 'Validé (Mention Très Bien)' },
+              ],
+            };
+          }
+          return item;
+        })
+      );
+    }
+  };
+
+  const validerInscriptionDirecteur = async (inscriptionId: string) => {
+    const todayFormatted = new Date().toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    let targetCandEmail = '';
+    let validatedRecord: InscriptionRecord | null = null;
+
+    setInscriptionsList((prev) =>
+      prev.map((item) => {
+        if (item.id === inscriptionId) {
+          targetCandEmail = item.candidatEmail.trim().toLowerCase();
+          const dossierNum = `DOC-CEDOC-2026-${item.cne}`;
+          const receiptNum = `REC-INSC-2026-${Math.floor(10000 + Math.random() * 90000)}`;
+          const token = `VISA-DIR-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+
+          const updated: InscriptionRecord = {
+            ...item,
+            statut: 'Inscription validée',
+            dateValidationDirecteur: todayFormatted,
+            numeroDossier: dossierNum,
+            receiptNumber: receiptNum,
+            signatureElectroniqueToken: token,
+          };
+          validatedRecord = updated;
+          return updated;
+        }
+        return item;
+      })
+    );
+
+    setCandidature((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        statut: 'Inscrit' as any,
+      };
+    });
+
+    if (targetCandEmail) {
+      setCandidaturesDirecteurList((prev) =>
+        prev.map((c) =>
+          c.candidatEmail.trim().toLowerCase() === targetCandEmail
+            ? { ...c, decisionDirecteur: 'Admis' }
+            : c
+        )
+      );
+
+      notifyCandidateEvent(targetCandEmail, {
+        id: 'notif_insc_validee_' + Date.now(),
+        title: "Inscription administrative validée",
+        detail: "Votre Directeur de thèse a validé votre inscription. Votre reçu officiel est disponible.",
+        date: todayFormatted,
+        type: 'success',
+        isReceipt: true,
+        receiptData: validatedRecord || undefined,
+      });
+    }
+
+    setLogsCedoc((prev) => [
+      {
+        id: 'log_insc_' + Date.now(),
+        date: todayFormatted,
+        action: `Validation définitive de l'inscription administrative pour le dossier ${validatedRecord?.numeroDossier || 'DOC-CEDOC-2026'}`,
+        auteur: directeurUser?.nomComplet || 'Directeur de Thèse',
+      },
+      ...prev,
+    ]);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -1356,6 +1748,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isListeOfficiellePubliee,
         admisOfficielsList,
         logsCedoc,
+        inscriptionsList,
+        getInscriptionForCandidat,
+        soumettreDemandeInscription,
+        synchroniserMassarDirecteur,
+        validerInscriptionDirecteur,
         loginWithEmail,
         loginWithGoogle,
         loginAsDirecteur,

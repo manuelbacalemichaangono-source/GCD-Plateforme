@@ -21,6 +21,7 @@ import {
   X,
   CheckCheck,
   Download,
+  GraduationCap,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
@@ -28,9 +29,10 @@ import { SujetRecord } from '../types/cedoc';
 import { HomePage } from './HomePage';
 import { CartView } from './CartView';
 import { CalendrierView } from './CalendrierView';
+import { InscriptionModule } from './InscriptionModule';
 
 interface CandidateDashboardProps {
-  initialTab?: 'home' | 'candidature' | 'notifications' | 'profil';
+  initialTab?: 'home' | 'candidature' | 'inscription' | 'notifications' | 'profil';
   onViewSubjectDetails: (sujet: SujetRecord) => void;
   onOpenAuth: (mode: 'login' | 'register') => void;
   activeSection?: 'recherche' | 'calendrier' | 'resultats';
@@ -58,7 +60,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
   } = useAuth();
 
   const { clearCart, cartItems } = useCart();
-  const [activeTab, setActiveTab] = useState<'home' | 'candidature' | 'notifications' | 'profil'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'home' | 'candidature' | 'inscription' | 'notifications' | 'profil'>(initialTab);
   const [isViewingCart, setIsViewingCart] = useState(false);
 
   // Modale de confirmation pour annuler la candidature
@@ -422,11 +424,21 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
                         {/* Message officiel si admis */}
                         {isCandAdmis && (
-                          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900 flex items-center gap-2">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                            <span className="font-semibold">
-                              Félicitations ! Votre admission au cycle doctoral a été validée par la Direction du CEDoc et publiée sur la liste officielle.
-                            </span>
+                          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <span className="font-semibold">
+                                Félicitations ! Votre admission au cycle doctoral a été validée par la Direction du CEDoc.
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setActiveTab('inscription')}
+                              className="inline-flex items-center gap-1.5 btn-primary text-xs h-[32px] px-3 shrink-0 self-start sm:self-auto"
+                            >
+                              <GraduationCap className="w-3.5 h-3.5" />
+                              <span>Inscription doctorale</span>
+                            </button>
                           </div>
                         )}
 
@@ -547,6 +559,15 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* 2b. NOUVEL ONGLET DÉDIÉ : MODULE D'INSCRIPTION DOCTORALE DÉMATÉRIALISÉE */}
+      {activeTab === 'inscription' && (
+        <div className="py-6">
+          <div className="desktop-container max-w-[820px] mx-auto px-4">
+            <InscriptionModule onBackToDashboard={() => setActiveTab('candidature')} />
           </div>
         </div>
       )}
@@ -1065,6 +1086,24 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
             <FileText className="w-5 h-5" />
             <span>Candidature</span>
           </button>
+
+          {(isCandidateAdmis || candidature?.statut === 'Admis' || candidature?.statut === ('Inscrit' as any)) && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsViewingCart(false);
+                setActiveTab('inscription');
+              }}
+              className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${
+                activeTab === 'inscription'
+                  ? 'text-blue-600'
+                  : 'text-emerald-600 hover:text-emerald-800'
+              }`}
+            >
+              <GraduationCap className="w-5 h-5" />
+              <span>Inscription</span>
+            </button>
+          )}
 
           <button
             type="button"

@@ -199,3 +199,74 @@ export interface TimelineStep {
   dateInfo?: string;
   note?: string;
 }
+
+export type StatutInscription =
+  | 'En attente de soumission'
+  | 'Demande transmise au directeur'
+  | 'Inscription validée';
+
+export interface InscriptionDocItem {
+  id: string;
+  type: 'diplome' | 'releves';
+  label: string;
+  referenceDoc: string;
+  source: 'api_massar' | 'systeme_academique';
+  statut: 'Conforme' | 'Vérifié' | 'En attente';
+  dateCertification: string;
+  details?: string;
+}
+
+export interface InscriptionRecord {
+  id: string;
+  candidatId: string;
+  candidatNom: string;
+  candidatPrenom: string;
+  candidatEmail: string;
+  cne: string;
+  sujetId: string;
+  sujetIntitule: string;
+  directeurNom: string;
+  directeurEmail: string;
+  universiteOrigine: string;
+  isExterne: boolean;
+  estSynchronise: boolean;
+  diplomeMaster?: string;
+  anneeObtention?: string;
+  mention?: string;
+  moyenneGenerale?: number;
+  apiSyncToken?: string;
+  relevesNotes?: Array<{
+    semestre: string;
+    moyenne: number;
+    validation: string;
+  }>;
+  documentsOriginaux: InscriptionDocItem[];
+  statut: StatutInscription;
+  dateDemande?: string;
+  dateValidationDirecteur?: string;
+  numeroDossier?: string;
+  receiptNumber?: string;
+  signatureElectroniqueToken?: string;
+}
+
+export interface MassarApiResponse {
+  success: boolean;
+  massarCode: string;
+  universiteOrigine: string;
+  etablissement: string;
+  diplomeIntitule: string;
+  anneeObtention: string;
+  mention: string;
+  moyenneGenerale: number;
+  apiSyncToken: string;
+  statutValidation: string;
+  dateVerification: string;
+  documentsOriginaux: InscriptionDocItem[];
+  relevesNotes: Array<{
+    semestre: string;
+    moyenne: number;
+    validation: string;
+  }>;
+}
+
+
