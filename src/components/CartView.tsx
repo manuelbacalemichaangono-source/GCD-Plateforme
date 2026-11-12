@@ -18,6 +18,7 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { PRESELECTION_SLOTS, PieceSlotPreselection, SujetRecord } from '../types/cedoc';
 import { validateCandidateFile } from '../utils/storageHelper';
+import { DocumentPreviewFrame } from './DocumentPreviewFrame';
 
 interface CartViewProps {
   onBackToHome: () => void;
@@ -97,20 +98,26 @@ export const CartView: React.FC<CartViewProps> = ({
         minute: '2-digit',
       });
       const sizeFormatted = `${(file.size / 1024).toFixed(2)} KB`;
-      const previewUrl = URL.createObjectURL(file);
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+        reader.onerror = () => reject(new Error('read_error'));
+        reader.readAsDataURL(file);
+      });
+      const resolvedUrl = dataUrl || URL.createObjectURL(file);
 
       await saveUploadedPiece(
         slotId,
         label,
         file.name,
-        file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+        file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
         file.size,
         `candidatures/${user?.uid || 'temp'}/${slotId}_${file.name}`,
-        previewUrl,
+        resolvedUrl,
         false,
         sizeFormatted,
         dateFormatted,
-        previewUrl
+        resolvedUrl
       );
       setFeedback(`Document "${file.name}" ajouté avec succès.`);
     } catch {
@@ -397,20 +404,20 @@ export const CartView: React.FC<CartViewProps> = ({
                             </div>
                           </div>
 
-                          {/* Bouton de consultation / téléchargement */}
+                          {/* Bouton de consultation directe */}
                           <button
                             type="button"
                             onClick={() =>
                               handlePreviewPiece(
                                 piece.fileName,
                                 piece.mimeType,
-                                piece.downloadUrl || ''
+                                piece.previewUrl || piece.downloadUrl || ''
                               )
                             }
                             className="p-2 text-slate-600 hover:text-blue-600 hover:bg-slate-50 rounded-lg transition-colors shrink-0"
                             title="Consulter le fichier"
                           >
-                            <Download className="w-4 h-4" />
+                            <Eye className="w-4 h-4" />
                           </button>
                         </div>
 
@@ -494,36 +501,12 @@ export const CartView: React.FC<CartViewProps> = ({
               </button>
             </div>
 
-            {/* Aperçu du contenu */}
-            <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center justify-center min-h-[300px] text-center">
-              {previewModal.mimeType.includes('image') && previewModal.url ? (
-                <img
-                  src={previewModal.url}
-                  alt={previewModal.fileName}
-                  className="max-h-[340px] max-w-full object-contain rounded-lg shadow-xs"
-                />
-              ) : (
-                <div className="flex flex-col items-center gap-3">
-                  <div className="w-16 h-20 border-2 border-slate-300 rounded-lg bg-white flex flex-col items-center justify-center shadow-xs">
-                    <FileText className="w-8 h-8 text-blue-600 stroke-[1.5]" />
-                    <span className="text-[10px] font-bold text-slate-800 uppercase mt-1">
-                      PDF
-                    </span>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sm text-slate-900">
-                      Document officiel enregistré
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {previewModal.fileName}
-                    </p>
-                    <span className="inline-block mt-2 px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold">
-                      Prêt pour instruction scientifique
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* Aperçu réel du document */}
+            <DocumentPreviewFrame
+              fileName={previewModal.fileName}
+              mimeType={previewModal.mimeType}
+              url={previewModal.url}
+            />
 
             <div className="flex items-center justify-end">
               <button

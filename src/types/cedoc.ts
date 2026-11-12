@@ -95,7 +95,7 @@ export interface CandidaturePourDirecteur {
   validationCedoc?: boolean;
   evaluationJury?: EvaluationJury;
   statutPublication?: 'Non publiée' | 'Publiée';
-  pieces: Record<string, { fileName: string; type: string; downloadUrl?: string; sizeFormatted?: string; dateFormatted?: string; previewUrl?: string }>;
+  pieces: Record<string, { fileName: string; type: string; mimeType?: string; downloadUrl?: string; previewUrl?: string; sizeFormatted?: string; dateFormatted?: string }>;
 }
 
 export interface LaboratoireRecord {
@@ -115,6 +115,7 @@ export interface PieceDossierRecord {
   sizeBytes: number;
   storagePath: string;
   downloadUrl: string;
+  previewUrl?: string;
   sourceAuto: boolean;
   statut: StatutPiece;
   motif?: string;
@@ -216,6 +217,20 @@ export interface InscriptionDocItem {
   details?: string;
 }
 
+export interface InscriptionModuleGrade {
+  code: string;
+  intitule: string;
+  note: number;
+  resultat: string;
+}
+
+export interface InscriptionSemestreDetail {
+  semestre: string;
+  moyenne: number;
+  validation: string;
+  modules?: InscriptionModuleGrade[];
+}
+
 export interface InscriptionRecord {
   id: string;
   candidatId: string;
@@ -225,9 +240,11 @@ export interface InscriptionRecord {
   cne: string;
   sujetId: string;
   sujetIntitule: string;
+  discipline?: string;
   directeurNom: string;
   directeurEmail: string;
   universiteOrigine: string;
+  etablissementOrigineDetail?: string;
   isExterne: boolean;
   estSynchronise: boolean;
   diplomeMaster?: string;
@@ -235,13 +252,11 @@ export interface InscriptionRecord {
   mention?: string;
   moyenneGenerale?: number;
   apiSyncToken?: string;
-  relevesNotes?: Array<{
-    semestre: string;
-    moyenne: number;
-    validation: string;
-  }>;
+  relevesNotes?: InscriptionSemestreDetail[];
   documentsOriginaux: InscriptionDocItem[];
   statut: StatutInscription;
+  recuEnvoye?: boolean;
+  dateEnvoiRecu?: string;
   dateDemande?: string;
   dateValidationDirecteur?: string;
   numeroDossier?: string;
@@ -262,11 +277,7 @@ export interface MassarApiResponse {
   statutValidation: string;
   dateVerification: string;
   documentsOriginaux: InscriptionDocItem[];
-  relevesNotes: Array<{
-    semestre: string;
-    moyenne: number;
-    validation: string;
-  }>;
+  relevesNotes: InscriptionSemestreDetail[];
 }
 
 

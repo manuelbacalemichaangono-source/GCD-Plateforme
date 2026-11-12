@@ -18,9 +18,12 @@ import {
   MapPin,
   Shield,
   FileCheck2,
+  GraduationCap,
+  Send,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { CandidaturePourDirecteur, SujetRecord } from '../types/cedoc';
+import { CandidaturePourDirecteur, InscriptionRecord, SujetRecord } from '../types/cedoc';
+import { DocumentPreviewFrame } from './DocumentPreviewFrame';
 
 const DEPARTEMENTS_DISCIPLINAIRES = [
   'Tous les départements',
@@ -47,10 +50,12 @@ export const DirecteurCedocDashboard: React.FC = () => {
     publierListeOfficielleAdmis,
     isListeOfficiellePubliee,
     logsCedoc,
+    inscriptionsList,
+    envoyerRecuInscriptionCedoc,
     logout,
   } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'tableau' | 'gestion' | 'profil'>('tableau');
+  const [activeTab, setActiveTab] = useState<'tableau' | 'inscrits' | 'gestion' | 'profil'>('tableau');
 
   // Modal d'inspection complète du dossier et de l'acta d'évaluation signée
   const [inspectModal, setInspectModal] = useState<{
@@ -67,6 +72,9 @@ export const DirecteurCedocDashboard: React.FC = () => {
     candidatNom: string;
     fileName: string;
     type: string;
+    mimeType?: string;
+    downloadUrl?: string;
+    previewUrl?: string;
   }>({
     isOpen: false,
     candidatNom: '',
@@ -121,6 +129,35 @@ export const DirecteurCedocDashboard: React.FC = () => {
       (c) => c.decisionDirecteur === 'Retenue' || c.decisionDirecteur === 'Admis'
     );
   }, [candidaturesDirecteurList]);
+
+  // Candidats inscrits regroupés et ordonnés par filière
+  const inscritsParFiliere = useMemo(() => {
+    const valides = inscriptionsList.filter((i) => i.statut === 'Inscription validée');
+    const grouped = new Map<string, InscriptionRecord[]>();
+    valides.forEach((insc) => {
+      const matchedSujet = sujetsList.find((s) => s.id === insc.sujetId);
+      const filiere = insc.discipline || matchedSujet?.discipline || 'Autre';
+      const list = grouped.get(filiere) || [];
+      list.push(insc);
+      grouped.set(filiere, list);
+    });
+    return Array.from(grouped.entries())
+      .sort(([a], [b]) => a.localeCompare(b, 'fr'))
+      .map(([filiere, items]) => ({
+        filiere,
+        items: [...items].sort((a, b) =>
+          `${a.candidatNom} ${a.candidatPrenom}`.localeCompare(
+            `${b.candidatNom} ${b.candidatPrenom}`,
+            'fr'
+          )
+        ),
+      }));
+  }, [inscriptionsList, sujetsList]);
+
+  const totalInscrits = useMemo(
+    () => inscritsParFiliere.reduce((acc, grp) => acc + grp.items.length, 0),
+    [inscritsParFiliere]
+  );
 
   // Sujets filtrés pour la Gestion Global
   const sujetsFiltres = useMemo(() => {
@@ -392,7 +429,83 @@ export const DirecteurCedocDashboard: React.FC = () => {
           )}
 
           {/* =========================================================
-              ONGLET 2 : GESTION GLOBAL (SUPERVISION DES THÈSES & POSTULATIONS)
+              ONGLET 2 : CANDIDATS INSCRITS (ORDRE PAR FILIÈRE)
+              ========================================================= */}
+          {activeTab === 'inscrits' && (
+            <div className="flex flex-col gap-5">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                <h1 className="font-display font-bold text-base text-slate-900">
+                  Candidats inscrits ({totalInscrits})
+                </h1>
+              </div>
+
+              {inscritsParFiliere.length === 0 ? (
+                <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-xs text-slate-500">
+                  Aucun candidat inscrit.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {inscritsParFiliere.map(({ filiere, items }) => (
+                    <div
+                      key={filiere}
+                      className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs"
+                    >
+                      <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                        <h2 className="font-display font-bold text-xs uppercase tracking-wide text-slate-800">
+                          {filiere}
+                        </h2>
+                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-white border border-slate-200 text-slate-700">
+                          {items.length}
+                        </span>
+                      </div>
+
+                      <div className="divide-y divide-slate-100">
+                        {items.map((insc) => (
+                          <div
+                            key={insc.id}
+                            className="px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                          >
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs min-w-0">
+                              <span className="font-bold text-sm text-slate-900">
+                                {insc.candidatPrenom} {insc.candidatNom}
+                              </span>
+                              <span className="font-mono text-slate-600">
+                                {insc.cne}
+                              </span>
+                              <span className="text-slate-600">
+                                {insc.universiteOrigine}
+                              </span>
+                            </div>
+
+                            <div className="shrink-0">
+                              {insc.recuEnvoye ? (
+                                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>Reçu envoyé</span>
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => envoyerRecuInscriptionCedoc(insc.id)}
+                                  className="btn-primary text-xs h-[36px] px-3.5 inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 border-blue-600"
+                                >
+                                  <Send className="w-3.5 h-3.5" />
+                                  <span>Envoyer reçu d'inscription</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* =========================================================
+              ONGLET 3 : GESTION GLOBAL (SUPERVISION DES THÈSES & POSTULATIONS)
               ========================================================= */}
           {activeTab === 'gestion' && (
             <div className="flex flex-col gap-6">
@@ -859,6 +972,9 @@ export const DirecteurCedocDashboard: React.FC = () => {
                             candidatNom: `${inspectModal.candidature?.candidatPrenom} ${inspectModal.candidature?.candidatNom}`,
                             fileName: piece.fileName,
                             type: piece.type,
+                            mimeType: piece.mimeType,
+                            downloadUrl: piece.downloadUrl,
+                            previewUrl: piece.previewUrl || piece.downloadUrl,
                           })
                         }
                         className="text-xs font-semibold text-blue-600 hover:text-blue-800 shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50"
@@ -917,17 +1033,17 @@ export const DirecteurCedocDashboard: React.FC = () => {
           onClick={() => setViewingPiece((prev) => ({ ...prev, isOpen: false }))}
         >
           <div
-            className="modal-content max-w-2xl p-6 bg-white border border-slate-200 rounded-xl shadow-lg flex flex-col gap-4"
+            className="modal-content max-w-4xl p-6 bg-white border border-slate-200 rounded-xl shadow-lg flex flex-col gap-4 max-h-[92vh]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-blue-600" />
-                <div>
-                  <h3 className="font-display font-bold text-sm text-slate-900">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="w-5 h-5 text-blue-600 shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="font-display font-bold text-sm text-slate-900 truncate">
                     {viewingPiece.fileName}
                   </h3>
-                  <span className="text-[11px] text-slate-400">
+                  <span className="text-[11px] text-slate-400 block">
                     Dossier de {viewingPiece.candidatNom} · {viewingPiece.type}
                   </span>
                 </div>
@@ -935,36 +1051,20 @@ export const DirecteurCedocDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setViewingPiece((prev) => ({ ...prev, isOpen: false }))}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="text-slate-400 hover:text-slate-600 p-1 shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 flex flex-col gap-4 min-h-[300px]">
-              <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-xs flex flex-col gap-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100 text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-                  <span>CEDoc EST Fès · Université Sidi Mohamed Ben Abdellah</span>
-                  <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                    Document certifié
-                  </span>
-                </div>
+            <DocumentPreviewFrame
+              fileName={viewingPiece.fileName}
+              mimeType={viewingPiece.mimeType}
+              type={viewingPiece.type}
+              url={viewingPiece.previewUrl || viewingPiece.downloadUrl}
+            />
 
-                <div className="py-4 text-center flex flex-col items-center gap-1">
-                  <h4 className="font-bold text-sm text-slate-900">
-                    {viewingPiece.fileName.replace(/\.pdf|\.png|\.jpg/i, '').replace(/_/g, ' ')}
-                  </h4>
-                  <span className="text-xs text-slate-600 font-medium">
-                    Candidat : {viewingPiece.candidatNom}
-                  </span>
-                  <p className="text-xs text-slate-500 max-w-md mt-2 leading-relaxed">
-                    Copie conforme certifiée conforme pour la procédure d’admission doctorale 2026/2027.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-end pt-1">
               <button
                 type="button"
                 onClick={() => setViewingPiece((prev) => ({ ...prev, isOpen: false }))}
@@ -1080,7 +1180,7 @@ export const DirecteurCedocDashboard: React.FC = () => {
 
       {/* PESTANAS DE NAVEGACIÓN EN LA PARTE INFERIOR */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 shadow-md h-[54px] flex items-center justify-center">
-        <div className="desktop-container flex items-center justify-around max-w-md w-full">
+        <div className="desktop-container flex items-center justify-around max-w-xl w-full px-2">
           <button
             type="button"
             onClick={() => setActiveTab('tableau')}
@@ -1090,6 +1190,22 @@ export const DirecteurCedocDashboard: React.FC = () => {
           >
             <LayoutDashboard className="w-5 h-5" />
             <span>Tableau de bord</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('inscrits')}
+            className={`relative flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${
+              activeTab === 'inscrits' ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <div className="relative">
+              <GraduationCap className="w-5 h-5" />
+              {inscriptionsList.some((i) => i.statut === 'Inscription validée' && !i.recuEnvoye) && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-blue-600" />
+              )}
+            </div>
+            <span>Candidats inscrits</span>
           </button>
 
           <button

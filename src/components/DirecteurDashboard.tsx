@@ -27,6 +27,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { InscriptionRecord } from '../types/cedoc';
+import { DocumentPreviewFrame } from './DocumentPreviewFrame';
+import { OfficialDocumentsModal } from './OfficialDocumentsModal';
 
 export const DirecteurDashboard: React.FC = () => {
   const {
@@ -55,9 +57,11 @@ export const DirecteurDashboard: React.FC = () => {
     candidatNom: string;
     fileName: string;
     type: string;
+    mimeType?: string;
     sizeFormatted?: string;
     dateFormatted?: string;
     downloadUrl?: string;
+    previewUrl?: string;
   }>({
     isOpen: false,
     candidatNom: '',
@@ -173,13 +177,19 @@ export const DirecteurDashboard: React.FC = () => {
     return mesCandidatures.find((c) => c.id === selectedCandidatId) || null;
   }, [mesCandidatures, selectedCandidatId]);
 
-  // Filtrer les inscriptions doctorales relatives aux sujets de ce directeur
+  // Filtrer uniquement les inscriptions déjà soumises (Code Massar/CNE + Université envoyés par le candidat)
   const mesInscriptions = useMemo(() => {
-    if (!directeurUser) return inscriptionsList;
+    const submitted = inscriptionsList.filter(
+      (i) =>
+        i.statut !== 'En attente de soumission' &&
+        Boolean(i.cne && i.cne.trim().length > 0) &&
+        Boolean(i.universiteOrigine && i.universiteOrigine.trim().length > 0)
+    );
+    if (!directeurUser) return submitted;
     const dirNom = directeurUser.nomComplet.toLowerCase();
     const dirEmail = directeurUser.email.toLowerCase();
     const mySubjectIds = new Set(mesSujets.map((s) => s.id));
-    return inscriptionsList.filter(
+    return submitted.filter(
       (i) =>
         mySubjectIds.has(i.sujetId) ||
         i.directeurNom.toLowerCase().includes(dirNom) ||
@@ -189,6 +199,13 @@ export const DirecteurDashboard: React.FC = () => {
 
   const [syncingInscId, setSyncingInscId] = useState<string | null>(null);
   const [validatingInscId, setValidatingInscId] = useState<string | null>(null);
+  const [selectedDocsInscId, setSelectedDocsInscId] = useState<string | null>(null);
+  const [loadingDocsInscId, setLoadingDocsInscId] = useState<string | null>(null);
+
+  const selectedDocsInsc = useMemo(
+    () => mesInscriptions.find((i) => i.id === selectedDocsInscId) || null,
+    [mesInscriptions, selectedDocsInscId]
+  );
 
   const handleSyncMassar = async (inscId: string) => {
     setSyncingInscId(inscId);
@@ -196,6 +213,21 @@ export const DirecteurDashboard: React.FC = () => {
       await synchroniserMassarDirecteur(inscId);
     } finally {
       setSyncingInscId(null);
+    }
+  };
+
+  const handleOpenStudentDocs = async (insc: InscriptionRecord) => {
+    if (insc.isExterne && !insc.estSynchronise && insc.statut !== 'Inscription validée') {
+      return;
+    }
+    setSelectedDocsInscId(insc.id);
+    if (!insc.documentsOriginaux?.length || !insc.relevesNotes?.length) {
+      setLoadingDocsInscId(insc.id);
+      try {
+        await synchroniserMassarDirecteur(insc.id);
+      } finally {
+        setLoadingDocsInscId(null);
+      }
     }
   };
 
@@ -550,193 +582,109 @@ export const DirecteurDashboard: React.FC = () => {
           {activeTab === 'inscriptions' && (
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                <div>
-                  <h1 className="font-display font-bold text-base text-slate-900">
-                    Gestion des inscriptions doctorales ({mesInscriptions.length})
-                  </h1>
-                </div>
+                <h1 className="font-display font-bold text-base text-slate-900">
+                  Inscriptions ({mesInscriptions.length})
+                </h1>
               </div>
 
               {mesInscriptions.length === 0 ? (
                 <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-xs text-slate-500">
-                  Aucune demande d'inscription pour le moment.
+                  Aucune demande d'inscription reçue pour le moment.
                 </div>
               ) : (
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3">
                   {mesInscriptions.map((insc) => {
                     const isValidee = insc.statut === 'Inscription validée';
-                    const isTransmise = insc.statut === 'Demande transmise au directeur';
-                    const hasAcademicData =
-                      (insc.documentsOriginaux && insc.documentsOriginaux.length > 0) ||
-                      insc.estSynchronise ||
-                      !insc.isExterne;
+                    const canOpenDocs = !insc.isExterne || insc.estSynchronise || isValidee;
 
                     return (
                       <div
                         key={insc.id}
-                        className={`bg-white border rounded-xl p-5 shadow-2xs flex flex-col gap-4 transition-all ${
+                        className={`bg-white border rounded-xl p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${
                           isValidee
-                            ? 'border-emerald-300 bg-emerald-50/10'
-                            : isTransmise
-                            ? 'border-blue-200'
-                            : 'border-slate-200'
+                            ? 'border-emerald-300 bg-emerald-50/15'
+                            : 'border-slate-200 hover:border-slate-300'
                         }`}
                       >
-                        {/* En-tête du dossier */}
-                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 pb-3 border-b border-slate-100">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h2 className="font-display font-bold text-sm text-slate-900">
-                                {insc.candidatPrenom} {insc.candidatNom}
-                              </h2>
-                              <span
-                                className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
-                                  isValidee
-                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                    : isTransmise
-                                    ? 'bg-blue-50 text-blue-800 border-blue-200'
-                                    : 'bg-slate-100 text-slate-700 border-slate-200'
-                                }`}
+                        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            {canOpenDocs ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenStudentDocs(insc)}
+                                className="font-display font-bold text-sm text-blue-700 hover:text-blue-900 hover:underline underline-offset-2 text-left cursor-pointer inline-flex items-center gap-1.5"
+                                title="Cliquer pour consulter les documents officiels"
                               >
-                                {isValidee
-                                  ? 'Inscription validée'
-                                  : isTransmise
-                                  ? 'Demande reçue'
-                                  : 'En attente de soumission'}
+                                <span>{insc.candidatPrenom} {insc.candidatNom}</span>
+                                <FileText className="w-3.5 h-3.5 shrink-0" />
+                              </button>
+                            ) : (
+                              <span className="font-display font-bold text-sm text-slate-900">
+                                {insc.candidatPrenom} {insc.candidatNom}
                               </span>
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                                {insc.isExterne ? 'Université externe' : 'EST Fès (Interne)'}
+                            )}
+
+                            {isValidee ? (
+                              <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border bg-emerald-50 text-emerald-800 border-emerald-200">
+                                Inscrit
                               </span>
-                            </div>
-                            <span className="text-xs text-slate-500">
-                              CNE : <strong className="font-mono text-slate-700">{insc.cne}</strong> · {insc.candidatEmail} · {insc.universiteOrigine}
+                            ) : insc.isExterne && insc.estSynchronise ? (
+                              <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border bg-blue-50 text-blue-800 border-blue-200">
+                                Synchronisé
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border bg-slate-100 text-slate-700 border-slate-200">
+                                Demande reçue
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+                            <span>
+                              Code Massar / CNE :{' '}
+                              <strong className="font-mono text-slate-900">{insc.cne}</strong>
                             </span>
+                            <span>
+                              Université / École :{' '}
+                              <strong className="text-slate-900">{insc.universiteOrigine}</strong>
+                            </span>
+                          </div>
+
+                          <div className="text-xs text-slate-500 truncate">
+                            Sujet : {insc.sujetIntitule}
                           </div>
                         </div>
 
-                        {/* Thèse et sujet attribué */}
-                        <div className="p-3 bg-slate-50 rounded-lg text-xs flex flex-col gap-1 border border-slate-100">
-                          <span className="text-slate-500 font-medium">Sujet doctoral :</span>
-                          <span className="font-semibold text-slate-900">{insc.sujetIntitule}</span>
-                        </div>
-
-                        {/* Synchronisation API Massar pour candidats externes */}
-                        {insc.isExterne && !insc.estSynchronise && !isValidee && (
-                          <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                            <div className="flex items-center gap-2 text-blue-900">
-                              <Building2 className="w-4 h-4 text-blue-600 shrink-0" />
-                              <span>Université d'origine externe ({insc.universiteOrigine})</span>
-                            </div>
+                        <div className="flex items-center gap-2.5 shrink-0">
+                          {insc.isExterne && !insc.estSynchronise && !isValidee ? (
                             <button
                               type="button"
                               onClick={() => handleSyncMassar(insc.id)}
                               disabled={syncingInscId === insc.id}
-                              className="btn-primary text-xs h-[34px] px-3.5 whitespace-nowrap bg-blue-600 hover:bg-blue-700"
+                              className="btn-primary text-xs h-[36px] px-3.5 whitespace-nowrap bg-blue-600 hover:bg-blue-700 border-blue-600"
                             >
-                              <RefreshCw className={`w-3.5 h-3.5 ${syncingInscId === insc.id ? 'animate-spin' : ''}`} />
-                              <span>{syncingInscId === insc.id ? 'Synchronisation...' : 'Synchroniser via API Massar'}</span>
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Données académiques synchronisées ou extraites */}
-                        {hasAcademicData && (
-                          <div className="flex flex-col gap-2">
-                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <RefreshCw
+                                className={`w-3.5 h-3.5 ${
+                                  syncingInscId === insc.id ? 'animate-spin' : ''
+                                }`}
+                              />
                               <span>
-                                {insc.isExterne
-                                  ? 'Données académiques récupérées via API Massar'
-                                  : 'Données académiques extraites du système interne EST Fès'}
+                                {syncingInscId === insc.id
+                                  ? 'Synchronisation...'
+                                  : "Synchroniser avec l'API"}
                               </span>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs">
-                              <div className="p-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <Hash className="w-4 h-4 text-blue-600 shrink-0" />
-                                  <div>
-                                    <span className="font-semibold block text-slate-900">Code CNE / Massar</span>
-                                    <span className="text-[10px] text-slate-500 font-mono">{insc.cne}</span>
-                                  </div>
-                                </div>
-                                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                  Conforme
-                                </span>
-                              </div>
-
-                              <div className="p-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <GraduationCap className="w-4 h-4 text-indigo-600 shrink-0" />
-                                  <div className="truncate max-w-[140px]">
-                                    <span className="font-semibold block text-slate-900 truncate">Diplôme de Master</span>
-                                    <span className="text-[10px] text-slate-500 block truncate">
-                                      {insc.mention || 'Très Bien'} ({insc.anneeObtention || '2025'})
-                                    </span>
-                                  </div>
-                                </div>
-                                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                  Certifié
-                                </span>
-                              </div>
-
-                              <div className="p-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <FileCheck2 className="w-4 h-4 text-violet-600 shrink-0" />
-                                  <div>
-                                    <span className="font-semibold block text-slate-900">Relevés de notes</span>
-                                    <span className="text-[10px] text-slate-500">Moyenne : {insc.moyenneGenerale || 16.42}/20</span>
-                                  </div>
-                                </div>
-                                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                  S1 à S4
-                                </span>
-                              </div>
-                            </div>
-
-                            {insc.relevesNotes && insc.relevesNotes.length > 0 && (
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-xs">
-                                {insc.relevesNotes.map((rn, idx) => (
-                                  <div key={idx} className="p-2 bg-slate-50 border border-slate-200 rounded text-center">
-                                    <span className="text-[10px] text-slate-400 block font-semibold">{rn.semestre}</span>
-                                    <span className="font-bold text-slate-900">{rn.moyenne} / 20</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Confirmation & Validation */}
-                        {isValidee ? (
-                          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs flex items-center justify-between text-emerald-900">
-                            <div className="flex items-center gap-2">
-                              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                              <span className="font-semibold">Dossier validé et formulaire officiel transmis au candidat</span>
-                            </div>
-                            <span className="text-[11px] text-emerald-700">
-                              Dossier : <strong className="font-mono">{insc.numeroDossier || `DOC-CEDOC-2026-${insc.cne}`}</strong>
-                            </span>
-                          </div>
-                        ) : isTransmise ? (
-                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                            <span className="text-xs text-slate-500">
-                              {insc.isExterne && !insc.estSynchronise
-                                ? 'Veuillez d’abord synchroniser les données via l’API Massar.'
-                                : 'Vérifiez les données académiques avant de valider l’inscription.'}
-                            </span>
-
+                            </button>
+                          ) : (
                             <button
                               type="button"
-                              onClick={() => handleValiderInscription(insc.id)}
-                              disabled={validatingInscId === insc.id || (insc.isExterne && !insc.estSynchronise)}
-                              className="inline-flex items-center gap-1.5 btn-primary text-xs h-[36px] px-4 bg-emerald-600 hover:bg-emerald-700 border-emerald-600 disabled:opacity-50"
+                              onClick={() => handleOpenStudentDocs(insc)}
+                              className="btn-secondary text-xs h-[36px] px-3.5 whitespace-nowrap font-semibold inline-flex items-center gap-1.5"
                             >
-                              <ShieldCheck className="w-4 h-4" />
-                              <span>{validatingInscId === insc.id ? 'Validation...' : 'Valider l’inscription'}</span>
+                              <Eye className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Consulter les documents</span>
                             </button>
-                          </div>
-                        ) : null}
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -992,9 +940,11 @@ export const DirecteurDashboard: React.FC = () => {
                           candidatNom: `${selectedCandidature.candidatPrenom} ${selectedCandidature.candidatNom}`,
                           fileName: piece.fileName,
                           type: piece.type,
+                          mimeType: piece.mimeType,
                           sizeFormatted: piece.sizeFormatted,
                           dateFormatted: piece.dateFormatted,
                           downloadUrl: piece.downloadUrl,
+                          previewUrl: piece.previewUrl || piece.downloadUrl,
                         })
                       }
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold transition-colors"
@@ -1091,74 +1041,60 @@ export const DirecteurDashboard: React.FC = () => {
           onClick={() => setViewingPiece((prev) => ({ ...prev, isOpen: false }))}
         >
           <div
-            className="modal-content max-w-2xl p-6 bg-white border border-slate-200 rounded-xl shadow-lg flex flex-col gap-4"
+            className="modal-content max-w-4xl p-6 bg-white border border-slate-200 rounded-xl shadow-lg flex flex-col gap-4 max-h-[92vh]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-blue-600" />
-                <div>
-                  <h3 className="font-display font-bold text-sm text-slate-900">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="w-5 h-5 text-blue-600 shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="font-display font-bold text-sm text-slate-900 truncate">
                     {viewingPiece.fileName}
                   </h3>
-                  <span className="text-[11px] text-slate-400">
+                  <span className="text-[11px] text-slate-400 block">
                     Dossier de {viewingPiece.candidatNom} · {viewingPiece.type}
+                    {viewingPiece.sizeFormatted ? ` · ${viewingPiece.sizeFormatted}` : ''}
                   </span>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setViewingPiece((prev) => ({ ...prev, isOpen: false }))}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="text-slate-400 hover:text-slate-600 p-1 shrink-0"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Lecteur / Aperçu de document académique authentique */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 flex flex-col gap-4 min-h-[320px]">
-              <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-xs flex flex-col gap-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100 text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-                  <span>Université Sidi Mohamed Ben Abdellah · CEDoc EST Fès</span>
-                  <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                    Document certifié
-                  </span>
-                </div>
+            <DocumentPreviewFrame
+              fileName={viewingPiece.fileName}
+              mimeType={viewingPiece.mimeType}
+              type={viewingPiece.type}
+              url={viewingPiece.previewUrl || viewingPiece.downloadUrl}
+            />
 
-                <div className="py-2 text-center flex flex-col items-center gap-1">
-                  <h4 className="font-bold text-sm text-slate-900">
-                    {viewingPiece.fileName.replace(/\.pdf|\.png|\.jpg/i, '').replace(/_/g, ' ')}
-                  </h4>
-                  <span className="text-xs text-slate-600 font-medium">
-                    Candidat : {viewingPiece.candidatNom}
-                  </span>
-                </div>
-
-                <div className="p-3 bg-slate-50 rounded text-xs text-slate-600 leading-relaxed font-mono">
-                  [Aperçu du contenu du fichier joint : document officiel conforme déposé sur la plateforme CEDoc EST Fès. L’ensemble des éléments d’évaluation scientifique, relevés et attestations d’accès au cycle doctoral ont été indexés avec succès.]
-                </div>
-
-                <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-100">
-                  <span>Taille : {viewingPiece.sizeFormatted || '305.35 KB'}</span>
-                  <span>Enregistré le : {viewingPiece.dateFormatted || '29 octobre 2026, 18:58'}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between pt-2">
-              <span className="text-xs text-slate-400">
-                Prévisualisation officielle réservée au jury d’admission
-              </span>
+            <div className="flex items-center justify-end pt-1">
               <button
                 type="button"
                 onClick={() => setViewingPiece((prev) => ({ ...prev, isOpen: false }))}
                 className="btn-primary text-xs h-[36px] px-4"
               >
-                Fermer la consultation
+                Fermer
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODALE DOCUMENTS ACADÉMIQUES OFFICIELS & INSCRIPTION */}
+      {selectedDocsInsc && (
+        <OfficialDocumentsModal
+          inscription={selectedDocsInsc}
+          isLoading={loadingDocsInscId === selectedDocsInsc.id}
+          isValidating={validatingInscId === selectedDocsInsc.id}
+          onInscrire={handleValiderInscription}
+          onClose={() => setSelectedDocsInscId(null)}
+        />
       )}
 
       {/* MODALE DE REJET AVEC MOTIF OBLIGATOIRE */}
@@ -1420,7 +1356,7 @@ export const DirecteurDashboard: React.FC = () => {
           >
             <div className="relative">
               <GraduationCap className="w-5 h-5" />
-              {mesInscriptions.some((i) => i.statut === 'Validé par le candidat') && (
+              {mesInscriptions.some((i) => i.statut === 'Demande transmise au directeur') && (
                 <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-blue-600" />
               )}
             </div>

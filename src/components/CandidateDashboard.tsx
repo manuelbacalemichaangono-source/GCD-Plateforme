@@ -30,6 +30,7 @@ import { HomePage } from './HomePage';
 import { CartView } from './CartView';
 import { CalendrierView } from './CalendrierView';
 import { InscriptionModule } from './InscriptionModule';
+import { downloadInscriptionReceiptPdf } from '../utils/pdfGenerator';
 
 interface CandidateDashboardProps {
   initialTab?: 'home' | 'candidature' | 'inscription' | 'notifications' | 'profil';
@@ -57,6 +58,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     updateProfileData,
     markNotificationRead,
     markAllNotificationsRead,
+    getInscriptionForCandidat,
   } = useAuth();
 
   const { clearCart, cartItems } = useCart();
@@ -247,11 +249,17 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     };
   }, [hasRetenue, mySentCandidatures, candidature]);
 
+  const currentInscription = getInscriptionForCandidat(candidateEmail);
+  const hasReceipt =
+    Boolean(currentInscription?.recuEnvoye) ||
+    candidateNotifications.some((n) => Boolean(n.isReceipt));
+
   const step1State: 'vert' | 'rouge' | 'gris' = isEnvoyee ? 'vert' : 'rouge';
   const step2State: 'vert' | 'rouge' | 'gris' = !isEnvoyee ? 'gris' : hasRetenue || allRejetees ? 'vert' : 'rouge';
   const step3State: 'vert' | 'rouge' | 'gris' = !isEnvoyee ? 'gris' : hasRetenue ? 'vert' : allRejetees ? 'rouge' : 'rouge';
   const step4State: 'vert' | 'rouge' | 'gris' = !isEnvoyee ? 'gris' : hasRetenue ? 'vert' : 'gris';
   const step5State: 'vert' | 'rouge' | 'gris' = isCandidateAdmis ? 'vert' : 'gris';
+  const step6State: 'vert' | 'rouge' | 'gris' = hasReceipt ? 'vert' : 'gris';
 
   const stepsList = [
     { id: 'step_depot', title: '1. Dépôt', state: step1State },
@@ -259,6 +267,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
     { id: 'step_evaluation', title: '3. Avis directeur', state: step3State },
     { id: 'step_convocation', title: '4. Entretien', state: step4State },
     { id: 'step_admission', title: '5. Admission', state: step5State },
+    { id: 'step_inscrit', title: '6. Inscrit', state: step6State },
   ];
 
   const toggleExpand = (sujetId: string) => {
@@ -519,7 +528,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
 
               {/* Stepper horizontal épuré */}
               <div className="py-4 px-2">
-                <div className="grid grid-cols-5 gap-2 relative">
+                <div className="grid grid-cols-6 gap-2 relative">
                   <div className="absolute top-5 left-6 right-6 h-0.5 bg-slate-200 -z-0" />
 
                   {stepsList.map((st, index) => {
@@ -622,9 +631,14 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                       const isDanger = notif.type === 'danger';
                       const isConvocation =
                         notif.isConvocation || notif.title.toLowerCase().includes('convocation');
+                      const isReceipt = Boolean(notif.isReceipt && notif.receiptData);
 
                       const handleClick = () => {
                         markNotificationRead(notif.id);
+                        if (isReceipt && notif.receiptData) {
+                          downloadInscriptionReceiptPdf(notif.receiptData);
+                          return;
+                        }
                         if (isConvocation) {
                           const data = notif.convocationData || convocationData || {
                             date: candidature?.convocationDate || '24 novembre 2026',
@@ -692,6 +706,22 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({
                                   <Calendar className="w-3.5 h-3.5" />
                                   <span>Voir les informations de l’entretien et télécharger la convocation (PDF) →</span>
                                 </span>
+                              )}
+
+                              {isReceipt && notif.receiptData && (
+                                <a
+                                  href="#telecharger-recu"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    markNotificationRead(notif.id);
+                                    downloadInscriptionReceiptPdf(notif.receiptData!);
+                                  }}
+                                  className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 underline underline-offset-2 inline-flex items-center gap-1.5 mt-1 self-start"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>Télécharger le reçu d&apos;inscription (PDF) →</span>
+                                </a>
                               )}
 
                               <span className="text-[10px] text-slate-400 mt-0.5 font-medium">
